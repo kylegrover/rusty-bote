@@ -1,7 +1,6 @@
 mod poll;
 
 use crate::db::Database;
-use serenity::model::application::command::Command;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use serenity::model::id::GuildId;
 use serenity::prelude::*;
