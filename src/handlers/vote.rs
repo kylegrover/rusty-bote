@@ -1,11 +1,14 @@
 use crate::db::Database;
-use serenity::builder::CreateActionRow;
+// Remove unused imports
 use serenity::model::application::component::ButtonStyle;
 use serenity::model::application::interaction::{
     message_component::MessageComponentInteraction, InteractionResponseType,
 };
 use serenity::prelude::*;
+// Add SelectMenuOption import
+use serenity::builder::CreateSelectMenu;
 use chrono::Utc;
+use log::{info, error};
 
 pub async fn handle_vote_button(
     database: &Database,
@@ -38,48 +41,32 @@ pub async fn handle_vote_button(
                                 .ephemeral(true)
                                 .content(format!("**{}**\nRate each option from 0 to 5 stars:", poll.question))
                                 .components(|c| {
-                                    // Each option gets its own action row with star rating buttons
+                                    // Create a select menu for each option
                                     for option in &poll.options {
                                         c.create_action_row(|row| {
-                                            // First add the option name as a disabled button
-                                            row.create_button(|btn| {
-                                                btn.custom_id(format!("option_name_{}", option.id))
-                                                    .label(&option.text)
-                                                    .style(ButtonStyle::Secondary)
-                                                    .disabled(true)
-                                            });
-                                            
-                                            // Add 0-5 star buttons
-                                            for stars in 0..=5 {
-                                                row.create_button(|btn| {
-                                                    let custom_id = format!("vote_{}_{}_{}", poll_id, option.id, stars);
-                                                    let label = if stars == 0 {
-                                                        "0".to_string()
-                                                    } else {
-                                                        "⭐".repeat(stars as usize)
-                                                    };
-                                                    
-                                                    btn.custom_id(custom_id)
-                                                        .label(label)
-                                                        .style(if stars == 0 {
-                                                            ButtonStyle::Secondary
-                                                        } else {
-                                                            ButtonStyle::Primary
-                                                        })
-                                                });
-                                            }
-                                            row
+                                            row.create_select_menu(|menu| {
+                                                menu.custom_id(format!("vote_{}_{}", poll_id, option.id))
+                                                    .placeholder(format!("Rate: {}", option.text))
+                                                    .options(|opts| {
+                                                        // Add option for 0 stars
+                                                        opts.create_option(|opt| 
+                                                            opt.label("0 stars").value("0").default_selection(true)
+                                                        );
+                                                        
+                                                        for i in 1..=5 {
+                                                            // Add options for 1 to 5 stars
+                                                            opts.create_option(|opt| 
+                                                                opt.label(format!("{} ", "⭐".repeat(i))).value(i.to_string())
+                                                            );
+                                                        }
+                                                        
+                                                        opts
+                                                    })
+                                            })
                                         });
                                     }
                                     
-                                    // Add a submit button
-                                    c.create_action_row(|row| {
-                                        row.create_button(|btn| {
-                                            btn.custom_id(format!("submit_vote_{}", poll_id))
-                                                .label("Submit Vote")
-                                                .style(ButtonStyle::Success)
-                                        })
-                                    })
+                                    c
                                 })
                         })
                 })
@@ -113,6 +100,8 @@ pub async fn handle_star_vote(
     option_id: &str,
     rating: i32,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    info!("Recording star vote: poll_id={}, option_id={}, rating={}", poll_id, option_id, rating);
+    
     // Record the vote in the database
     let vote = crate::models::Vote {
         user_id: component.user.id.to_string(),
@@ -125,16 +114,21 @@ pub async fn handle_star_vote(
     // Save the vote, replacing any existing vote for this poll+option+user
     database.save_vote(&vote).await?;
     
-    // Acknowledge the vote
+    info!("Sending vote acknowledgment as ephemeral message");
+    
+    // Use ephemeral message to acknowledge the vote
     component
         .create_interaction_response(&ctx.http, |response| {
             response
-                .kind(InteractionResponseType::UpdateMessage)
+                .kind(InteractionResponseType::ChannelMessageWithSource)
                 .interaction_response_data(|message| {
-                    message.content(format!("You rated \"{}\" with {} stars", option_id, rating))
+                    message
+                        .content(format!("You rated \"{}\" with {} stars", option_id, rating))
+                        .ephemeral(true)
                 })
         })
         .await?;
     
+    info!("Successfully recorded vote and sent acknowledgment");
     Ok(())
 }
