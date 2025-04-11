@@ -1,5 +1,6 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,18 +31,24 @@ pub enum VotingMethod {
     Approval,
 }
 
+impl fmt::Display for VotingMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VotingMethod::Star => write!(f, "STAR"),
+            VotingMethod::Plurality => write!(f, "Plurality"),
+            VotingMethod::Ranked => write!(f, "Ranked Choice"),
+            VotingMethod::Approval => write!(f, "Approval"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Vote {
     pub user_id: String,
     pub poll_id: String,
-    pub ratings: Vec<OptionRating>,
-    pub timestamp: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OptionRating {
     pub option_id: String,
     pub rating: i32,
+    pub timestamp: DateTime<Utc>,
 }
 
 impl Poll {
@@ -50,20 +57,26 @@ impl Poll {
         channel_id: String,
         creator_id: String,
         question: String,
-        options: Vec<String>,
+        options_text: Vec<String>,
         voting_method: VotingMethod,
         duration_minutes: Option<i64>,
     ) -> Self {
-        let now = Utc::now();
-        let ends_at = duration_minutes.map(|mins| now + chrono::Duration::minutes(mins));
-        
-        let options = options
+        let options = options_text
             .into_iter()
             .map(|text| PollOption {
                 id: Uuid::new_v4().to_string(),
                 text,
             })
             .collect();
+
+        let created_at = Utc::now();
+        
+        // Calculate end time if duration is provided
+        let ends_at = match duration_minutes {
+            Some(0) => None, // 0 means manual ending
+            Some(minutes) => Some(created_at + Duration::minutes(minutes)),
+            None => Some(created_at + Duration::days(1)), // Default: 1 day
+        };
 
         Self {
             id: Uuid::new_v4().to_string(),
@@ -73,7 +86,7 @@ impl Poll {
             question,
             options,
             voting_method,
-            created_at: now,
+            created_at,
             ends_at,
             is_active: true,
         }

@@ -125,13 +125,21 @@ The LLM assistant can use the area below to keep notes about the state of the pr
 - ✅ Command registration system for `/poll` commands
 - ✅ SQLite database connection and schema created
 - ✅ Poll creation with interactive embed
+- ✅ Fixed ownership issues in STAR voting module
+- ✅ Added Display trait implementation for VotingMethod
+- ✅ Implemented proper poll ending with results display
+- ✅ Fixed STAR voting interface with proper button components
 
 ### Next Tasks
-1. Implement interactive voting buttons for STAR voting
-   - Create message components for rating options 0-5
-   - Handle component interactions to record votes
-2. Implement poll ending and result calculation
-   - Fetch and calculate STAR voting results
-   - Display results visually in an embed
+1. ✅ Implement interactive voting buttons for STAR voting
+   - ✅ Create message components for rating options 0-5
+   - ✅ Handle component interactions to record votes
+2. ✅ Implement poll ending and result calculation
+   - ✅ Fetch and calculate STAR voting results
+   - ✅ Display results visually in an embed
 3. Add support for other voting methods
-4. Implement `/poll list` and `/poll help` commands
+   - Implement Plurality voting calculation
+   - Implement Ranked Choice voting calculation
+   - Implement Approval voting calculation
+4. Implement `/poll list` command
+5. Implement `/poll help` command

@@ -265,18 +265,86 @@ async fn handle_end_poll(
     ctx: &Context,
     command: &ApplicationCommandInteraction,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // In a full implementation, we would extract the poll ID and end the poll
+    // Extract the poll ID from the command options
+    let poll_id = match command
+        .data
+        .options
+        .first()
+        .and_then(|option| option.options.first())
+        .and_then(|option| option.value.as_ref())
+        .and_then(|value| value.as_str())
+    {
+        Some(id) => id,
+        None => {
+            send_error_response(ctx, command, "No poll ID provided").await?;
+            return Ok(());
+        }
+    };
+
+    // Get the poll from the database
+    let poll = match database.get_poll(poll_id).await {
+        Ok(poll) => poll,
+        Err(_) => {
+            send_error_response(ctx, command, "Poll not found").await?;
+            return Ok(());
+        }
+    };
+
+    // Check if the poll is already ended
+    if !poll.is_active {
+        send_error_response(ctx, command, "This poll has already ended").await?;
+        return Ok(());
+    }
+
+    // End the poll in the database
+    database.end_poll(poll_id).await?;
+
+    // Get votes for the poll
+    let votes = database.get_poll_votes(poll_id).await?;
+
+    // Calculate results based on voting method
+    let results = calculate_poll_results(&poll, &votes);
+
+    // Create the results embed
     command
         .create_interaction_response(&ctx.http, |response| {
             response
                 .kind(InteractionResponseType::ChannelMessageWithSource)
                 .interaction_response_data(|message| {
-                    message.content("Poll ending functionality coming soon!")
+                    message
+                        .content("Poll ended!")
+                        .embed(|e| create_results_embed(e, &poll, &results))
                 })
         })
         .await?;
 
     Ok(())
+}
+
+fn calculate_poll_results(
+    poll: &crate::models::Poll,
+    votes: &[crate::models::Vote],
+) -> crate::voting::PollResults {
+    match poll.voting_method {
+        crate::models::VotingMethod::Star => crate::voting::star::calculate_results(poll, votes),
+        crate::models::VotingMethod::Plurality => crate::voting::plurality::calculate_results(poll, votes),
+        crate::models::VotingMethod::Ranked => crate::voting::ranked::calculate_results(poll, votes),
+        crate::models::VotingMethod::Approval => crate::voting::approval::calculate_results(poll, votes),
+    }
+}
+
+fn create_results_embed<'a>(
+    embed: &'a mut CreateEmbed,
+    poll: &crate::models::Poll,
+    results: &crate::voting::PollResults,
+) -> &'a mut CreateEmbed {
+    embed
+        .title(format!("Results: {}", poll.question))
+        .description("The poll has ended. Here are the results:")
+        .field("Winner", &results.winner, false)
+        .field("Summary", &results.summary, false)
+        .footer(|f| f.text(format!("Poll ID: {}", poll.id)))
+        .timestamp(Utc::now().to_rfc3339())
 }
 
 async fn send_error_response(

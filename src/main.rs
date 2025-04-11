@@ -38,26 +38,36 @@ impl EventHandler for RustyBote {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::ApplicationCommand(command) = interaction {
-            info!("Received command interaction: {}", command.data.name);
+        match interaction {
+            Interaction::ApplicationCommand(command) => {
+                info!("Received command interaction: {}", command.data.name);
 
-            let response = commands::handle_command(&self.database, &ctx, &command).await;
+                let response = commands::handle_command(&self.database, &ctx, &command).await;
 
-            if let Err(e) = response {
-                error!("Failed to handle command: {}", e);
-                if let Err(e) = command
-                    .create_interaction_response(&ctx.http, |response| {
-                        response
-                            .kind(InteractionResponseType::ChannelMessageWithSource)
-                            .interaction_response_data(|message| {
-                                message.content("An error occurred while processing the command.")
-                            })
-                    })
-                    .await
-                {
-                    error!("Failed to send error response: {}", e);
+                if let Err(e) = response {
+                    error!("Failed to handle command: {}", e);
+                    if let Err(e) = command
+                        .create_interaction_response(&ctx.http, |response| {
+                            response
+                                .kind(InteractionResponseType::ChannelMessageWithSource)
+                                .interaction_response_data(|message| {
+                                    message.content("An error occurred while processing the command.")
+                                })
+                        })
+                        .await
+                    {
+                        error!("Failed to send error response: {}", e);
+                    }
                 }
             }
+            Interaction::MessageComponent(component) => {
+                info!("Received component interaction: {}", component.data.custom_id);
+                
+                if let Err(e) = handlers::handle_component(&self.database, &ctx, &component).await {
+                    error!("Failed to handle component: {}", e);
+                }
+            }
+            _ => {}
         }
     }
 }
