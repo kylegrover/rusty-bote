@@ -118,3 +118,20 @@ Score Then Automatic Runoff:
 ## Scratch Pad 
 The LLM assistant can use the area below to keep notes about the state of the project, such as tracking to-dos, notes about the details of a current task or how an error is impacting it, or save important snippets from the users prompts such as provided docs. This are is impermanent so the LLM is free to delete anything below this line as it's working if it thinks it's no longer relevant.
 ---
+
+### Current Progress
+- ✅ Basic project structure set up
+- ✅ Discord bot framework with Serenity
+- ✅ Command registration system for `/poll` commands
+- ✅ SQLite database connection and schema created
+- ✅ Poll creation with interactive embed
+
+### Next Tasks
+1. Implement interactive voting buttons for STAR voting
+   - Create message components for rating options 0-5
+   - Handle component interactions to record votes
+2. Implement poll ending and result calculation
+   - Fetch and calculate STAR voting results
+   - Display results visually in an embed
+3. Add support for other voting methods
+4. Implement `/poll list` and `/poll help` commands
