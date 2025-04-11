@@ -4,3 +4,20 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# Discord API
+serenity = { version = "0.11", features = ["client", "gateway", "rustls_backend", "model", "cache"] }
+tokio = { version = "1.21", features = ["macros", "rt-multi-thread"] }
+
+# Database
+sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+dotenvy = "0.15"
+
+# Utilities
+chrono = "0.4"
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+env_logger = "0.9"
+uuid = { version = "1.1", features = ["v4", "serde"] }
+thiserror = "1.0"
