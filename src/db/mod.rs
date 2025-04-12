@@ -274,6 +274,38 @@ impl Database {
         Ok(votes)
     }
 
+    // Get votes for a specific user and poll
+    pub async fn get_user_poll_votes(
+        &self,
+        poll_id: &str,
+        user_id: &str,
+    ) -> Result<Vec<crate::models::Vote>, Box<dyn std::error::Error + Send + Sync>> {
+        let votes = sqlx::query(
+            r#"
+            SELECT user_id, poll_id, option_id, rating, timestamp
+            FROM votes
+            WHERE poll_id = ? AND user_id = ?
+            "#,
+        )
+        .bind(poll_id)
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(|row| crate::models::Vote {
+            user_id: row.get::<String, _>("user_id"),
+            poll_id: row.get::<String, _>("poll_id"),
+            option_id: row.get::<String, _>("option_id"),
+            rating: row.get::<i32, _>("rating"),
+            timestamp: DateTime::parse_from_rfc3339(&row.get::<String, _>("timestamp"))
+                .unwrap()
+                .with_timezone(&Utc),
+        })
+        .collect();
+        
+        Ok(votes)
+    }
+
     // Save a vote (replacing any existing vote for the same user, poll and option)
     pub async fn save_vote(
         &self,
