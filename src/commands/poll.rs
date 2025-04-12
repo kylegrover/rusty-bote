@@ -240,6 +240,11 @@ fn create_poll_embed<'a>(embed: &'a mut CreateEmbed, poll: &Poll) -> &'a mut Cre
 }
 
 fn create_poll_components<'a>(row: &'a mut CreateActionRow, poll: &Poll) -> &'a mut CreateActionRow {
+    // Only add vote button if the poll is active
+    if !poll.is_active {
+        return row; // Return empty row if poll is not active
+    }
+
     match poll.voting_method {
         VotingMethod::Star => {
             row.create_button(|button| {

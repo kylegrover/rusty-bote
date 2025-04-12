@@ -40,9 +40,19 @@ pub async fn handle_vote_button(
                                     // Create a select menu for each option
                                     for option in &poll.options {
                                         c.create_action_row(|row| {
+                                            // Add a text label for the option
+                                            row.create_button(|btn| {
+                                                btn.custom_id(format!("label_{}", option.id))
+                                                   .label(&option.text)
+                                                   .style(serenity::model::application::component::ButtonStyle::Secondary)
+                                                   .disabled(true)
+                                            })
+                                        });
+                                        
+                                        c.create_action_row(|row| {
                                             row.create_select_menu(|menu| {
                                                 menu.custom_id(format!("vote_{}_{}", poll_id, option.id))
-                                                    .placeholder(format!("Rate: {}", option.text))
+                                                    .placeholder("Select your rating")
                                                     .options(|opts| {
                                                         // Add option for 0 stars
                                                         opts.create_option(|opt| 
@@ -110,21 +120,13 @@ pub async fn handle_star_vote(
     // Save the vote, replacing any existing vote for this poll+option+user
     database.save_vote(&vote).await?;
     
-    info!("Sending vote acknowledgment as ephemeral message");
-    
-    // Use ephemeral message to acknowledge the vote
+    // Acknowledge the vote with a deferred update response instead of a message
     component
         .create_interaction_response(&ctx.http, |response| {
-            response
-                .kind(InteractionResponseType::ChannelMessageWithSource)
-                .interaction_response_data(|message| {
-                    message
-                        .content(format!("You rated \"{}\" with {} stars", option_id, rating))
-                        .ephemeral(true)
-                })
+            response.kind(InteractionResponseType::DeferredUpdateMessage)
         })
         .await?;
     
-    info!("Successfully recorded vote and sent acknowledgment");
+    info!("Successfully recorded vote");
     Ok(())
 }

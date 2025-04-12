@@ -129,6 +129,11 @@ The LLM assistant can use the area below to keep notes about the state of the pr
 - ✅ Added Display trait implementation for VotingMethod
 - ✅ Implemented proper poll ending with results display
 - ✅ Fixed STAR voting interface with proper button components
+- ✅ Improved STAR voting UI with clear option labels
+- ✅ Removed unnecessary vote acknowledgment messages
+- ✅ Implemented Ranked Choice voting algorithm
+- ✅ Added clear labels for options in voting interface
+- ✅ Hide "Cast Your Vote" button for closed polls
 
 ### Next Tasks
 1. ✅ Implement interactive voting buttons for STAR voting
@@ -137,9 +142,17 @@ The LLM assistant can use the area below to keep notes about the state of the pr
 2. ✅ Implement poll ending and result calculation
    - ✅ Fetch and calculate STAR voting results
    - ✅ Display results visually in an embed
-3. Add support for other voting methods
-   - Implement Plurality voting calculation
-   - Implement Ranked Choice voting calculation
-   - Implement Approval voting calculation
-4. Implement `/poll list` command
-5. Implement `/poll help` command
+3. Support for all voting methods
+   - ✅ Plurality voting calculation
+   - ✅ Ranked Choice voting calculation
+   - ✅ Approval voting calculation
+4. Implement voting interfaces for other methods:
+   - Plurality voting interface
+   - Ranked Choice voting interface
+   - Approval voting interface
+5. Improved UI
+   - ✅ Add clear labels for each option in voting
+   - ✅ Hide voting buttons for closed polls
+6. Add error handling improvements
+7. Implement `/poll list` command
+8. Implement `/poll help` command
