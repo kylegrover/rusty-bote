@@ -1,12 +1,8 @@
 use crate::db::Database;
-// Remove unused imports
-use serenity::model::application::component::ButtonStyle;
 use serenity::model::application::interaction::{
     message_component::MessageComponentInteraction, InteractionResponseType,
 };
 use serenity::prelude::*;
-// Add SelectMenuOption import
-use serenity::builder::CreateSelectMenu;
 use chrono::Utc;
 use log::{info, error};
 
