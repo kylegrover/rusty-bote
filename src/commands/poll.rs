@@ -517,11 +517,18 @@ fn create_results_embed<'a>(
     poll: &crate::models::Poll,
     results: &crate::voting::PollResults,
 ) -> &'a mut CreateEmbed {
+    // Truncate summary if it's too long for an embed field
+    let summary_display = if results.summary.len() > 1024 {
+        format!("{}...", &results.summary[..1020]) // Leave space for "..."
+    } else {
+        results.summary.clone()
+    };
+
     embed
         .title(format!("Results: {}", poll.question))
         .description("The poll has ended. Here are the results:")
         .field("Winner", &results.winner, false)
-        .field("Summary", &results.summary, false)
+        .field("Details", &summary_display, false) // Use the potentially truncated summary
         .footer(|f| f.text(format!("Poll ID: {}", poll.id)))
         .timestamp(Utc::now().to_rfc3339())
 }
