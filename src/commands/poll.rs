@@ -108,7 +108,12 @@ pub async fn handle_poll_command(
                 resp.kind(serenity::model::application::interaction::InteractionResponseType::ChannelMessageWithSource)
                     .interaction_response_data(|msg| {
                         msg.ephemeral(true).content(
-                            "Usage:\n• /poll create question:<Q> options:<Opts> method:<M> [duration:<D>]\n• /poll end <ID>\n• /poll list\n",
+                            "Rusty-Bote Help:\n\
+                            - Create polls with /poll create (choose question, options, and method).\n\
+                            - Voting methods: STAR, Plurality, Ranked Choice, Approval.\n\
+                            - Members vote by clicking 'Cast Your Vote'.\n\
+                            - End polls anytime with /poll end.\n\
+                            - See project docs for advanced usage like scheduling or role restrictions."
                         )
                     })
             }).await?;

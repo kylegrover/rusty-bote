@@ -71,11 +71,7 @@ The bot will use SQLite as its database solution, which provides:
 - `/poll help` - Display usage information and command help
 
 ### Help Subcommand Implementation
-The `/poll help` subcommand is fully implemented and provides users with concise usage instructions including:
-• Creating polls with required and optional parameters
-• Ending active polls
-• Listing current and recent polls
-• Accessing help documentation
+Now, the `/poll help` subcommand provides a short, docs-like overview of Rusty-Bote. It summarizes the usual workflow, voting methods, and points users to the documentation for advanced features.
 
 ### Poll Creation Parameters
 - `question` - The poll question  
