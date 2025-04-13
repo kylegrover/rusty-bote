@@ -1,6 +1,7 @@
 use sqlx::{migrate::MigrateDatabase, sqlite::{SqlitePool, SqlitePoolOptions}, Sqlite, Row};
 use chrono::{DateTime, Utc};
 use std::env;
+use crate::models::{Poll, PollOption, Vote, VotingMethod};
 
 pub struct Database {
     pool: SqlitePool,
@@ -46,7 +47,8 @@ impl Database {
                 voting_method TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 ends_at TEXT,
-                is_active BOOLEAN NOT NULL DEFAULT TRUE
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                message_id TEXT
             );
             "#,
         )
@@ -92,13 +94,10 @@ impl Database {
         &self,
         poll: &crate::models::Poll,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let tx = self.pool.begin().await?;
-
-        // Insert poll
         sqlx::query(
             r#"
-            INSERT INTO polls (id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO polls (id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
             "#,
         )
         .bind(&poll.id)
@@ -136,6 +135,26 @@ impl Database {
 
         Ok(())
     }
+
+    // Update the message ID for a poll
+    pub async fn update_poll_message_id(
+        &self,
+        poll_id: &str,
+        message_id: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        sqlx::query(
+            r#"
+            UPDATE polls
+            SET message_id = ?
+            WHERE id = ?
+            "#,
+        )
+        .bind(message_id)
+        .bind(poll_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
     
     // Get a poll by ID
     pub async fn get_poll(
@@ -145,7 +164,7 @@ impl Database {
         // Get the poll
         let poll_row = sqlx::query(
             r#"
-            SELECT id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active 
+            SELECT id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id 
             FROM polls 
             WHERE id = ?
             "#,
@@ -164,6 +183,7 @@ impl Database {
         let created_at_str = poll_row.get::<String, _>("created_at");
         let ends_at_str: Option<String> = poll_row.get("ends_at");
         let is_active = poll_row.get::<bool, _>("is_active");
+        let message_id: Option<String> = poll_row.get("message_id");
         
         // Parse dates
         let created_at = DateTime::parse_from_rfc3339(&created_at_str)
@@ -220,6 +240,7 @@ impl Database {
             created_at,
             ends_at,
             is_active,
+            message_id,
         };
         
         Ok(poll)
@@ -234,7 +255,7 @@ impl Database {
             r#"
             UPDATE polls
             SET is_active = FALSE
-            WHERE id = ?
+            WHERE id = ? AND is_active = TRUE
             "#,
         )
         .bind(poll_id)
@@ -243,7 +264,108 @@ impl Database {
         
         Ok(())
     }
-    
+
+    // Get polls that have passed their end time and are still active
+    pub async fn get_expired_polls(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<(String, String, Option<String>)>, Box<dyn std::error::Error + Send + Sync>> {
+        let polls = sqlx::query(
+            r#"
+            SELECT id, channel_id, message_id
+            FROM polls
+            WHERE ends_at IS NOT NULL AND ends_at < ? AND is_active = TRUE
+            "#,
+        )
+        .bind(now.to_rfc3339())
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(|row| {
+            (
+                row.get::<String, _>("id"),
+                row.get::<String, _>("channel_id"),
+                row.get::<Option<String>, _>("message_id"),
+            )
+        })
+        .collect();
+        Ok(polls)
+    }
+
+    // Get active polls for a specific guild
+    pub async fn get_active_polls_by_guild(
+        &self,
+        guild_id: &str,
+    ) -> Result<Vec<Poll>, Box<dyn std::error::Error + Send + Sync>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, question, ends_at
+            FROM polls
+            WHERE guild_id = ? AND is_active = TRUE
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(guild_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let partial_polls = rows.into_iter().map(|row| {
+            Poll {
+                id: row.get("id"),
+                question: row.get("question"),
+                ends_at: row.get::<Option<String>, _>("ends_at").and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
+                guild_id: guild_id.to_string(),
+                channel_id: String::new(),
+                creator_id: String::new(),
+                options: Vec::new(),
+                voting_method: VotingMethod::Plurality,
+                created_at: Utc::now(),
+                is_active: true,
+                message_id: None,
+            }
+        }).collect();
+
+        Ok(partial_polls)
+    }
+
+    // Get recently ended polls for a specific guild
+    pub async fn get_recently_ended_polls_by_guild(
+        &self,
+        guild_id: &str,
+        limit: u32,
+    ) -> Result<Vec<Poll>, Box<dyn std::error::Error + Send + Sync>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, question, ends_at
+            FROM polls
+            WHERE guild_id = ? AND is_active = FALSE
+            ORDER BY ends_at DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(guild_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let partial_polls = rows.into_iter().map(|row| {
+            Poll {
+                id: row.get("id"),
+                question: row.get("question"),
+                ends_at: row.get::<Option<String>, _>("ends_at").and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
+                guild_id: guild_id.to_string(),
+                channel_id: String::new(),
+                creator_id: String::new(),
+                options: Vec::new(),
+                voting_method: VotingMethod::Plurality,
+                created_at: Utc::now(),
+                is_active: false,
+                message_id: None,
+            }
+        }).collect();
+        Ok(partial_polls)
+    }
+
     // Get votes for a poll
     pub async fn get_poll_votes(
         &self,

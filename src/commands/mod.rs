@@ -1,4 +1,4 @@
-mod poll;
+pub mod poll;
 
 use crate::db::Database;
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;

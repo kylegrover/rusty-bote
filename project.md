@@ -1,28 +1,28 @@
 # Rusty-Bote: Discord STAR Voting Bot
 
 ## Project Overview
-Rusty-Bote is a lightweight Discord bot written in Rust that allows server members to create and participate in polls using various voting methodologies, with STAR voting as the primary method. The bot provides an intuitive interface through Discord's slash commands and interactive components.
+Rusty-Bote is a lightweight Discord bot written in Rust that allows server members to create and participate in polls using various voting methods—STAR voting, plurality, ranked choice, and approval. The bot provides an intuitive interface through slash commands and interactive components.
 
 ## Core Features
-- Create polls via slash commands
-- Support for multiple voting methods:
-  - STAR (Score Then Automatic Runoff) voting
-  - Simple plurality voting
-  - Ranked choice voting
-  - Approval voting
-- Interactive voting through Discord buttons
-- Customizable poll duration
-- Automatic or manual poll closing
-- Clear results visualization
-- Lightweight and efficient design
+- Create polls via slash commands  
+- Support for multiple voting methods:  
+  - STAR (Score Then Automatic Runoff) voting  
+  - Simple plurality voting  
+  - Ranked choice voting  
+  - Approval voting  
+- Interactive voting through Discord buttons and select menus  
+- Customizable poll duration  
+- Automatic or manual poll closing  
+- Clear results display  
+- Lightweight and efficient design  
 
 ## Technical Architecture
 
 ### Technology Stack
 - **Language**: Rust
-- **Discord API**: [Serenity](https://github.com/serenity-rs/serenity) or [Twilight](https://github.com/twilight-rs/twilight)
+- **Discord API**: [Serenity](https://github.com/serenity-rs/serenity)
 - **Database**: SQLite for persistent storage
-- **ORM**: [SQLx](https://github.com/launchbadge/sqlx) or [Diesel](https://diesel.rs/)
+- **ORM**: [SQLx](https://github.com/launchbadge/sqlx)
 
 ### Data Persistence
 The bot will use SQLite as its database solution, which provides:
@@ -33,8 +33,9 @@ The bot will use SQLite as its database solution, which provides:
 
 ### Discord Integration
 - Utilizes Discord's slash commands API for command registration and handling
-- Leverages Discord's message components (buttons) for interactive voting
+- Leverages Discord's message components (buttons, select menus) for interactive voting
 - Uses embeds for visual presentation of polls and results
+- **Required Permissions**: `View Channel`, `Send Messages`, `Embed Links`, `Read Message History`, `Manage Messages` (for updating poll messages). These should be requested during the bot invite or configured in server settings.
 
 ## User Flow
 
@@ -50,7 +51,7 @@ The bot will use SQLite as its database solution, which provides:
 
 ### Voting Process
 1. Server members click on buttons to cast votes
-   - For STAR voting: Rate each option from 0-5 stars
+   - For STAR voting: Rate each option from 0-5 stars using select menus
    - For other methods: Appropriate voting interface
 2. Votes are recorded in the database
 3. Users can update their votes until the poll closes
@@ -64,17 +65,19 @@ The bot will use SQLite as its database solution, which provides:
 ## Command Structure
 
 ### Primary Commands
-- `/poll create` - Create a new poll
-- `/poll end [poll-id]` - Manually end an active poll
-- `/poll list` - Show active polls in the server
-- `/poll help` - Display help information about voting methods
+- `/poll create` - Create a new poll  
+- `/poll end [poll-id]` - Manually end an active poll  
+- `/poll list` - Show active and recent polls in the server  
+- `/poll help` - (Not yet implemented)
+
+The code currently implements create, end, and list subcommands under `/poll`. A placeholder for “help” is noted but not yet present in the codebase.
 
 ### Poll Creation Parameters
-- `question` - The poll question
-- `options` - The available choices
-- `method` - Voting method (STAR, plurality, ranked choice, approval)
-- `duration` - How long the poll should run
-- `anonymous` - Whether votes should be publicly visible
+- `question` - The poll question  
+- `options` - The available choices (minimum: 2, maximum: 10)  
+- `method` - Voting method (STAR, plurality, ranked choice, approval)  
+- `duration` - Duration of the poll in minutes (0 = manual close)  
+- `anonymous` - Tracks whether votes should be anonymous (planned, not fully implemented yet)
 
 ## Development Roadmap
 
@@ -100,20 +103,35 @@ The bot will use SQLite as its database solution, which provides:
 
 ### STAR Voting
 Score Then Automatic Runoff:
-1. Voters rate each candidate from 0-5 stars
-2. The two candidates with the highest total scores advance to a runoff
-3. In the runoff, the candidate preferred by more voters wins
+1. Voters rate each candidate from 0-5 stars using select menus.
+2. The two candidates with the highest total scores advance to a runoff.
+3. In the runoff, the candidate preferred by more voters wins (based on who received a higher score from each voter).
 
 ### Other Methods
-- **Plurality**: Traditional "most votes wins" approach
-- **Ranked Choice**: Voters rank candidates; elimination rounds until majority
-- **Approval**: Voters approve or disapprove each option; most approvals wins
+- **Plurality**: Traditional "most votes wins" approach via buttons.
+- **Ranked Choice**: Voters rank candidates using up/down/remove buttons. Elimination rounds until majority.
+- **Approval**: Voters approve or disapprove each option using toggle buttons. Most approvals wins.
+
+### Implementation Notes
+- The code includes subcommands for create, list, and end.  
+- The “anonymous” parameter is stored but not yet enforced in vote handling or results display.  
+- The “help” subcommand is referenced in documentation but is not yet implemented.  
+- Approval, STAR, ranked, and plurality voting flows are all functional.  
+- Discord limits message components to 5 action rows, so polls with many options might be constrained.
 
 ## Technical Considerations
 - Efficient handling of Discord API rate limits
 - Proper database indexing for quick poll retrieval
 - Secure handling of vote data
 - Scalable architecture for use across many Discord servers
+- Ensuring the bot has necessary Discord permissions in target channels.
+- **Discord Component Limits**: Discord messages are limited to 5 Action Rows. This restricts the complexity of interactive UIs, especially for polls with many options. STAR voting's interactive interface is limited to 2 options, and Approval/Ranked Choice are limited to 4 options due to this constraint. Alternative UIs (like Modals) might be needed for more options.
+
+## Next Tasks
+1. Continue refining and testing all current voting methods.  
+2. Implement or finalize anonymous voting logic.  
+3. Implement the “help” subcommand.  
+4. Explore UI improvements (e.g., modals) for larger polls that could exceed Discord’s component limits.  
 
 ## Scratch Pad 
 The LLM assistant can use the area below to keep notes about the state of the project, such as tracking to-dos, notes about the details of a current task or how an error is impacting it, or save important snippets from the users prompts such as provided docs. This are is impermanent so the LLM is free to delete anything below this line as it's working if it thinks it's no longer relevant.
@@ -140,6 +158,8 @@ The LLM assistant can use the area below to keep notes about the state of the pr
   - ✅ Approval voting interface
   - ✅ Ranked Choice voting interface
 - ✅ Added result calculation for all voting methods
+- ✅ Refactored component handler to correctly parse Poll ID and check status
+- ✅ Fixed compiler errors related to handler signatures
 
 ### Next Tasks
 1. ✅ Implement interactive voting buttons for STAR voting
@@ -160,5 +180,8 @@ The LLM assistant can use the area below to keep notes about the state of the pr
    - ✅ Add clear labels for each option in voting
    - ✅ Hide voting buttons for closed polls
 6. Add error handling improvements
+   - ✅ Add permission suggestions to logs for "Missing Access" errors.
+   - ✅ Improve logging for poll fetch errors in component handler.
+   - ✅ Address Discord 5 Action Row limit for interactive voting (Approval grouped, STAR limited).
 7. Implement `/poll list` command
 8. Implement `/poll help` command

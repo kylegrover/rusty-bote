@@ -2,96 +2,93 @@ mod commands;
 mod db;
 mod handlers;
 mod models;
-mod utils;
 mod voting;
+mod tasks; // Add tasks module
 
-use log::{error, info};
+use db::Database;
 use serenity::async_trait;
-use serenity::model::application::interaction::{Interaction, InteractionResponseType};
+use serenity::model::application::command::Command;
+use serenity::model::application::interaction::Interaction;
 use serenity::model::gateway::Ready;
-use serenity::model::id::GuildId;
 use serenity::prelude::*;
 use std::env;
+use std::sync::Arc;
+use log::{info, error, warn}; // Added warn
 
-struct RustyBote {
-    database: db::Database,
+struct Bot {
+    database: Arc<Database>,
 }
 
 #[async_trait]
-impl EventHandler for RustyBote {
+impl EventHandler for Bot {
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        // Clone Arc for the handler
+        let db = Arc::clone(&self.database);
+        let ctx_clone = ctx.clone();
+
+        // Spawn a task to handle the interaction concurrently
+        tokio::spawn(async move {
+            handlers::handle_interaction(&db, &ctx_clone, interaction).await;
+        });
+    }
+
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        // Register commands - for testing, register to a specific guild
-        let guild_id = GuildId(
-            env::var("GUILD_ID")
-                .expect("Expected GUILD_ID in environment")
-                .parse()
-                .expect("GUILD_ID must be an integer"),
-        );
+        // Register slash commands globally or for specific guilds
+        let commands = Command::set_global_application_commands(&ctx.http, |commands_builder| {
+            commands_builder.create_application_command(|command| commands::poll::create_poll_command(command))
+            // Add other commands here
+        })
+        .await;
 
-        let commands = commands::register_commands(&ctx, guild_id).await;
-        match commands {
-            Ok(_) => info!("Successfully registered commands"),
-            Err(e) => error!("Failed to register commands: {}", e),
+        if let Err(why) = commands {
+            error!("Failed to register slash commands: {:?}", why);
+        } else {
+            info!("Successfully registered global slash commands.");
         }
-    }
 
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        match interaction {
-            Interaction::ApplicationCommand(command) => {
-                info!("Received command interaction: {}", command.data.name);
-
-                let response = commands::handle_command(&self.database, &ctx, &command).await;
-
-                if let Err(e) = response {
-                    error!("Failed to handle command: {}", e);
-                    if let Err(e) = command
-                        .create_interaction_response(&ctx.http, |response| {
-                            response
-                                .kind(InteractionResponseType::ChannelMessageWithSource)
-                                .interaction_response_data(|message| {
-                                    message.content("An error occurred while processing the command.")
-                                })
-                        })
-                        .await
-                    {
-                        error!("Failed to send error response: {}", e);
-                    }
-                }
-            }
-            Interaction::MessageComponent(component) => {
-                info!("Received component interaction: {}", component.data.custom_id);
-                
-                if let Err(e) = handlers::handle_component(&self.database, &ctx, &component).await {
-                    error!("Failed to handle component: {}", e);
-                }
-            }
-            _ => {}
-        }
+        // --- Start Background Task for Ending Polls ---
+        let db_clone = Arc::clone(&self.database);
+        let ctx_clone = ctx.clone();
+        tokio::spawn(async move {
+            tasks::poll_ender::check_expired_polls_task(db_clone, ctx_clone).await;
+        });
+        // --- End Background Task ---
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Load .env file if available
+async fn main() {
+    // Initialize logging
     dotenvy::dotenv().ok();
     env_logger::init();
 
+    // Load token from environment variable
+    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+
     // Initialize database
-    let database = db::Database::new().await?;
-    
-    // Get Discord token from environment
-    let token = env::var("DISCORD_TOKEN").expect("Expected a Discord token in the environment");
+    let database = match Database::new().await {
+        Ok(db) => Arc::new(db),
+        Err(e) => {
+            error!("Failed to initialize database: {}", e);
+            return;
+        }
+    };
 
-    // Create the client
-    let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::GUILD_MESSAGE_REACTIONS;
+    // Define intents
+    let intents = GatewayIntents::GUILDS
+        | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::GUILD_INTEGRATIONS; // Add necessary intents
+
+    // Build client
     let mut client = Client::builder(&token, intents)
-        .event_handler(RustyBote { database })
-        .await?;
+        .event_handler(Bot { database })
+        .await
+        .expect("Err creating client");
 
-    // Start the client
-    info!("Starting bot...");
-    client.start().await?;
-    Ok(())
+    // Start client
+    if let Err(why) = client.start().await {
+        error!("Client error: {:?}", why);
+    }
 }

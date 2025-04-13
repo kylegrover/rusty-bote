@@ -15,6 +15,7 @@ pub struct Poll {
     pub created_at: DateTime<Utc>,
     pub ends_at: Option<DateTime<Utc>>,
     pub is_active: bool,
+    pub message_id: Option<String>, // Added message_id
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +90,7 @@ impl Poll {
             created_at,
             ends_at,
             is_active: true,
+            message_id: None, // Initialize message_id as None
         }
     }
 }
