@@ -1,10 +1,12 @@
-# Rusty Bote
+# 🛥️ Rusty Bote
 
 toot toot
 
 *Lightweight rust discord bot for running alternative polling/voting methods such as STAR*
 
 see **project.md** for project info. project-overview.md is also designed to be passed to an LLM along with any prompts for assistance with the project.
+
+⚠️ this thing is made of pure vibes ⚠️
 
 ### links and info
 
