@@ -78,6 +78,12 @@ pub fn create_poll_command(command: &mut CreateApplicationCommand) -> &mut Creat
                 .description("List active and recently ended polls in this server")
                 .kind(serenity::model::application::command::CommandOptionType::SubCommand)
         })
+        .create_option(|option| {
+            option
+                .name("help")
+                .description("Show help information")
+                .kind(serenity::model::application::command::CommandOptionType::SubCommand)
+        })
 }
 
 pub async fn handle_poll_command(
@@ -97,6 +103,16 @@ pub async fn handle_poll_command(
         "create" => handle_create_poll(database, ctx, command).await?,
         "end" => handle_end_poll(database, ctx, command).await?,
         "list" => handle_list_polls(database, ctx, command).await?,
+        "help" => {
+            command.create_interaction_response(&ctx.http, |resp| {
+                resp.kind(serenity::model::application::interaction::InteractionResponseType::ChannelMessageWithSource)
+                    .interaction_response_data(|msg| {
+                        msg.ephemeral(true).content(
+                            "Usage:\n• /poll create question:<Q> options:<Opts> method:<M> [duration:<D>]\n• /poll end <ID>\n• /poll list\n",
+                        )
+                    })
+            }).await?;
+        }
         _ => {
             send_error_response(ctx, command, "Unknown subcommand").await?;
         }

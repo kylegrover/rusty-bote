@@ -33,15 +33,28 @@ pub async fn handle_command(
 // Helper function to parse poll_id from custom_id
 fn parse_poll_id_from_custom_id(custom_id: &str) -> Option<String> {
     let parts: Vec<&str> = custom_id.split('_').collect();
-    if custom_id.starts_with("vote_") && parts.len() >= 3 { Some(parts[1].to_string()) }
-    else if custom_id.starts_with("plurality_") && parts.len() >= 3 { Some(parts[1].to_string()) }
-    else if custom_id.starts_with("approval_") && parts.len() >= 3 { Some(parts[1].to_string()) } // approval_<poll_id>_<option_id>_<value>
-    else if custom_id.starts_with("approval_submit_") && parts.len() >= 3 { Some(parts[2].to_string()) } // approval_submit_<poll_id>
-    else if custom_id.starts_with("rank_up_") && parts.len() >= 4 { Some(parts[2].to_string()) } // rank_up_<poll_id>_<option_id>
-    else if custom_id.starts_with("rank_down_") && parts.len() >= 4 { Some(parts[2].to_string()) } // rank_down_<poll_id>_<option_id>
-    else if custom_id.starts_with("rank_remove_") && parts.len() >= 4 { Some(parts[2].to_string()) } // rank_remove_<poll_id>_<option_id>
-    else if custom_id.starts_with("rank_submit_") && parts.len() >= 3 { Some(parts[2].to_string()) } // rank_submit_<poll_id>
-    else { None }
+    if custom_id.starts_with("vote_") && parts.len() >= 3 {
+        Some(parts[1].to_string())
+    } else if custom_id.starts_with("star_") && parts.len() >= 4 {
+        // New pattern for STAR voting: star_<poll_id>_<option_id>_<rating>
+        Some(parts[1].to_string())
+    } else if custom_id.starts_with("plurality_") && parts.len() >= 3 {
+        Some(parts[1].to_string())
+    } else if custom_id.starts_with("approval_") && parts.len() >= 3 {
+        Some(parts[1].to_string())
+    } else if custom_id.starts_with("approval_submit_") && parts.len() >= 3 {
+        Some(parts[2].to_string())
+    } else if custom_id.starts_with("rank_up_") && parts.len() >= 4 {
+        Some(parts[2].to_string())
+    } else if custom_id.starts_with("rank_down_") && parts.len() >= 4 {
+        Some(parts[2].to_string())
+    } else if custom_id.starts_with("rank_remove_") && parts.len() >= 4 {
+        Some(parts[2].to_string())
+    } else if custom_id.starts_with("rank_submit_") && parts.len() >= 3 {
+        Some(parts[2].to_string())
+    } else {
+        None
+    }
 }
 
 // Main component handler that routes to specific handlers based on the component ID
@@ -130,7 +143,22 @@ pub async fn handle_component(
             }).await?;
         }
     }
-    // Handle STAR voting ratings
+    // Handle STAR voting ratings (now recognizing "star_" IDs)
+    else if custom_id.starts_with("star_") {
+        // Format: star_<poll_id>_<option_id>_<rating>
+        let parts: Vec<&str> = custom_id.split('_').collect();
+        if parts.len() >= 4 {
+            let poll_id = parts[1];
+            let option_id = parts[2];
+            if let Ok(rating) = parts[3].parse::<i32>() {
+                vote::handle_star_vote(database, ctx, component, poll_id, option_id, rating).await?;
+            } else {
+                error!("Failed to parse rating in star vote custom_id: {}", custom_id);
+            }
+        } else {
+            error!("Invalid custom_id format for star vote: {}", custom_id);
+        }
+    }
     else if custom_id.starts_with("vote_") {
         // Extract poll_id, option_id, and rating from the custom_id
         // Format: vote_<poll_id>_<option_id>

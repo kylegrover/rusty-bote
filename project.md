@@ -70,7 +70,11 @@ The bot will use SQLite as its database solution, which provides:
 - `/poll list` - Show active and recent polls in the server  
 - `/poll help` - (Not yet implemented)
 
-The code currently implements create, end, and list subcommands under `/poll`. A placeholder for “help” is noted but not yet present in the codebase.
+### New Help Subcommand
+A simple "/poll help" subcommand is now supported. This returns basic usage instructions:
+• /poll create question:<Q> options:<Opts> method:<M> [duration:<D>]  
+• /poll end <ID>  
+• /poll list  
 
 ### Poll Creation Parameters
 - `question` - The poll question  
