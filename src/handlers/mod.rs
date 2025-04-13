@@ -36,14 +36,15 @@ fn parse_poll_id_from_custom_id(custom_id: &str) -> Option<String> {
     if custom_id.starts_with("vote_") && parts.len() >= 3 {
         Some(parts[1].to_string())
     } else if custom_id.starts_with("star_") && parts.len() >= 4 {
-        // New pattern for STAR voting: star_<poll_id>_<option_id>_<rating>
         Some(parts[1].to_string())
     } else if custom_id.starts_with("plurality_") && parts.len() >= 3 {
         Some(parts[1].to_string())
+    } 
+    // Moved approval_submit_ condition before generic approval_ to avoid mis-parsing
+    else if custom_id.starts_with("approval_submit_") && parts.len() >= 3 {
+        Some(parts[2].to_string())
     } else if custom_id.starts_with("approval_") && parts.len() >= 3 {
         Some(parts[1].to_string())
-    } else if custom_id.starts_with("approval_submit_") && parts.len() >= 3 {
-        Some(parts[2].to_string())
     } else if custom_id.starts_with("rank_up_") && parts.len() >= 4 {
         Some(parts[2].to_string())
     } else if custom_id.starts_with("rank_down_") && parts.len() >= 4 {

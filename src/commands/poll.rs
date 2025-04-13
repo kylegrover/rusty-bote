@@ -107,14 +107,32 @@ pub async fn handle_poll_command(
             command.create_interaction_response(&ctx.http, |resp| {
                 resp.kind(serenity::model::application::interaction::InteractionResponseType::ChannelMessageWithSource)
                     .interaction_response_data(|msg| {
-                        msg.ephemeral(true).content(
-                            "Rusty-Bote Help:\n\
-                            - Create polls with /poll create (choose question, options, and method).\n\
-                            - Voting methods: STAR, Plurality, Ranked Choice, Approval.\n\
-                            - Members vote by clicking 'Cast Your Vote'.\n\
-                            - End polls anytime with /poll end.\n\
-                            - See project docs for advanced usage like scheduling or role restrictions."
-                        )
+                        msg.ephemeral(true).embed(|e| {
+                            e.title("📊 Rusty-Bote Poll System Guide")
+                                .description("Welcome to Rusty-Bote! I'm here to help your server make better decisions through various voting methods.")
+                                .field("📝 Creating Polls", 
+                                    "Use `/poll create` with a question, comma-separated options, and your preferred voting method.\n\
+                                    For longer polls, set the duration in minutes (use 0 for manual closing).", 
+                                    false)
+                                .field("🗳️ Voting Methods", 
+                                    "**STAR Voting**: Rate each option 0-5 stars. Combines scoring and an automatic runoff between top choices.\n\
+                                    **Plurality**: Classic 'most votes wins' system. Each person picks one option.\n\
+                                    **Ranked Choice**: Rank options in order of preference. Eliminates lowest choices until majority reached.\n\
+                                    **Approval**: Simply approve any options you like. Most approvals wins.", 
+                                    false)
+                                .field("⚙️ Managing Polls", 
+                                    "• End active polls with `/poll end [poll-id]`\n\
+                                    • See all server polls with `/poll list`\n\
+                                    • Poll IDs are shown in poll embeds for reference", 
+                                    false)
+                                .field("💡 Tips", 
+                                    "> Keep option lists concise for better mobile experience\n\
+                                    > For complex decisions, STAR or Ranked Choice voting reduces tactical voting\n\
+                                    > Plurality works best for simple A/B decisions", 
+                                    false)
+                                .footer(|f| f.text("Rusty-Bote • Helping your server make better decisions"))
+                                .color((255, 165, 0))
+                        })
                     })
             }).await?;
         }
