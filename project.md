@@ -25,11 +25,16 @@ Rusty-Bote is a lightweight Discord bot written in Rust that allows server membe
 - **ORM**: [SQLx](https://github.com/launchbadge/sqlx)
 
 ### Data Persistence
-The bot will use SQLite as its database solution, which provides:
+The bot uses SQLite as its database solution, which provides:
 - Lightweight footprint
 - No separate database server required
 - Good performance for the expected workload
 - Simple backup and migration
+
+#### Database Schema
+- **polls**: Stores poll metadata, including ID, question, voting method, timestamps, and status
+- **poll_options**: Stores options for each poll, with position tracking
+- **votes**: Records user votes with ratings for each poll option
 
 ### Discord Integration
 - Utilizes Discord's slash commands API for command registration and handling
@@ -52,7 +57,9 @@ The bot will use SQLite as its database solution, which provides:
 ### Voting Process
 1. Server members click on buttons to cast votes
    - For STAR voting: Rate each option from 0-5 stars using select menus
-   - For other methods: Appropriate voting interface
+   - For plurality voting: Select a single option
+   - For ranked choice: Arrange options in order of preference
+   - For approval voting: Toggle approval for any number of options
 2. Votes are recorded in the database
 3. Users can update their votes until the poll closes
 
@@ -61,6 +68,7 @@ The bot will use SQLite as its database solution, which provides:
    - Bot calculates results using the selected voting method
    - Results are displayed in an updated embed
    - For STAR voting: Shows both the scoring round and runoff round
+   - For ranked choice: Shows elimination rounds
 
 ## Command Structure
 
@@ -71,7 +79,7 @@ The bot will use SQLite as its database solution, which provides:
 - `/poll help` - Display usage information and command help
 
 ### Help Subcommand Implementation
-Now, the `/poll help` subcommand provides a short, docs-like overview of Rusty-Bote. It summarizes the usual workflow, voting methods, and points users to the documentation for advanced features.
+The `/poll help` subcommand provides a concise overview of Rusty-Bote. It summarizes the workflow, voting methods, and guides users through the bot's functionality.
 
 ### Poll Creation Parameters
 - `question` - The poll question  
@@ -82,16 +90,18 @@ Now, the `/poll help` subcommand provides a short, docs-like overview of Rusty-B
 
 ## Development Roadmap
 
-### Current Status: Late Phase 1 / Early Phase 2
+### Current Status: Phase 2
 - ✅ Core voting system implemented with all four voting methods
 - ✅ Complete interaction handling architecture
 - ✅ Database persistence for polls and votes
 - ✅ Interactive UI components for all voting methods
 - ✅ Poll lifecycle management (creation, voting, ending)
 - ✅ Results calculation and display
+- ✅ Comprehensive error handling and logging
+- ✅ Poll listing functionality
+- ✅ Help command with clear documentation
 
 ### Phase 2 Focus (Current)
-- Comprehensive error handling and user feedback
 - UI refinements and accessibility improvements
 - Performance optimizations for larger servers
 - Enhanced result visualizations
@@ -146,6 +156,7 @@ The codebase implements a multi-layered error handling approach:
 2. **Comprehensive logging**: Error, warn, and info levels with context-rich messages
 3. **Graceful degradation**: Component failures don't crash the entire application
 4. **Context preservation**: Custom IDs and error contexts help debug issues
+5. **Permission issues**: Detailed error messages that suggest permission requirements
 
 ## Technical Considerations
 
@@ -164,22 +175,25 @@ The codebase implements a multi-layered error handling approach:
 - **Connection pooling**: Efficient database connection management
 - **Command registration**: Guild-specific vs. global command decisions
 
-## Known Bugs and Ongoing Fixes
-1. Fixed an incomplete function in the database module that was missing its brackets and signature, causing build issues.
-2. Confirmed ephemeral messages do not return a true message ID, so ephemeral poll messages cannot be edited or tracked. This is expected behavior but worth noting for future UI changes.
-3. Ranked Choice calculation could potentially enter an infinite loop in edge cases (added safety break). Needs further testing with complex tie scenarios.
-4. Embed field value limit (1024 chars) might truncate very detailed results summaries. Implemented basic truncation.
+## Known Bugs and Fixed Issues
+1. ✅ Fixed poll ID parsing for "done_voting_" buttons where the wrong array index was being used
+2. ✅ Fixed ephemeral message handling - implemented proper follow-up responses
+3. ✅ Added safety break for ranked choice algorithm to prevent infinite loops
+4. ✅ Implemented truncation for result summaries exceeding Discord's embed field character limit (1024)
+5. ✅ Improved error handling for missing permissions with actionable feedback
 
 ## Upcoming Enhancements
-1. Advanced scheduling for polls (Phase 3).
-2. Better ephemeral poll handling or alternative UI for ephemeral interactions.
+1. Advanced poll scheduling and time zone support
+2. Role-based poll access control
+3. Graphical representation of voting results using Unicode bar charts
+4. Exportable results data
 
 ## Next Development Priorities
 
 1. **Enhanced Results Visualization**
-    *   ✅ Add more detailed breakdowns of voting rounds to the results summary (STAR scoring/runoff, Ranked Choice rounds).
-    *   Add graphical representations of voting outcomes (e.g., bar charts using Unicode blocks or image generation).
-    *   Support for exporting results data (e.g., CSV).
+   - ✅ Add more detailed breakdowns of voting rounds to the results summary
+   - Add graphical representations of voting outcomes (using Unicode blocks)
+   - Support for exporting results data (e.g., CSV)
 
 2. **Advanced Poll Configuration**
    - Role-restricted polls
@@ -198,58 +212,7 @@ The codebase implements a multi-layered error handling approach:
 
 ## Implementation Notes
 - All voting methods are fully implemented with working interfaces
-- Database structures support persistent storage across bot restarts
-- The command system supports all planned subcommands
-- Comprehensive error handling with user feedback is in place
-- Discord component limits are handled gracefully with appropriate UI designs
-
-## Scratch Pad 
-The LLM assistant can use the area below to keep notes about the state of the project, such as tracking to-dos, notes about the details of a current task or how an error is impacting it, or save important snippets from the users prompts such as provided docs. This are is impermanent so the LLM is free to delete anything below this line as it's working if it thinks it's no longer relevant.
----
-
-### Current Progress
-- ✅ Basic project structure set up
-- ✅ Discord bot framework with Serenity
-- ✅ Command registration system for `/poll` commands
-- ✅ SQLite database connection and schema created
-- ✅ Poll creation with interactive embed
-- ✅ Fixed ownership issues in STAR voting module
-- ✅ Added Display trait implementation for VotingMethod
-- ✅ Implemented proper poll ending with results display
-- ✅ Fixed STAR voting interface with proper button components
-- ✅ Improved STAR voting UI with clear option labels
-- ✅ Removed unnecessary vote acknowledgment messages
-- ✅ Implemented Ranked Choice voting algorithm
-- ✅ Added clear labels for options in voting interface
-- ✅ Hide "Cast Your Vote" button for closed polls
-- ✅ Implemented all voting method interfaces
-- ✅ Added result calculation for all voting methods
-- ✅ Refactored component handler to correctly parse Poll ID and check status
-- ✅ Fixed compiler errors related to handler signatures
-- ✅ Implemented poll listing functionality
-- ✅ Added help command with usage instructions
-- ✅ Enhanced error handling with user-friendly messages
-- ✅ Implemented comprehensive logging system
-- ✅ Added permission checks and informative error messages
-- ✅ Improved results summary detail for STAR and Ranked Choice voting.
-
-### Next Tasks
-1. Implement results visualization enhancements
-   - ✅ Provide more detailed breakdowns of runoff rounds/scoring.
-   - Add charts/graphs for vote distribution (text-based or image).
-   - Implement results export functionality.
-
-2. Optimize database queries
-   - Add indices for common lookup patterns
-   - Implement caching for frequently accessed polls
-   - Consider connection pooling improvements
-
-3. Enhance UI for complex polls
-   - Explore modal dialogs for polls with many options
-   - Design alternative interfaces for polls exceeding component limits
-   - Improve mobile responsiveness
-
-4. Add administrative features
-   - Poll management dashboard for server admins
-   - Ability to clone/template previous polls
-   - Advanced scheduling options
+- Database schema supports persistent storage across bot restarts
+- The command system has comprehensive subcommand support
+- Advanced error handling with user feedback and detailed logging
+- Discord component limitations are handled with appropriate UI design patterns

@@ -2,11 +2,11 @@ use crate::db::Database;
 use serenity::model::application::interaction::{
     message_component::MessageComponentInteraction, InteractionResponseType,
 };
-use serenity::model::application::component::{ActionRowComponent, ComponentType, ButtonStyle};
+use serenity::model::application::component::{ActionRowComponent, ButtonStyle};
 use serenity::prelude::*;
 use chrono::Utc;
-use log::{info, error, warn};
-use crate::models::Poll; // Add Poll import
+use log::{info, warn};
+use crate::models::Poll;
 
 pub async fn handle_vote_button(
     database: &Database,
@@ -51,8 +51,8 @@ pub async fn handle_vote_button(
                                         let rating = option_ratings.get(&option.id).copied().unwrap_or(0);
                                         c.create_action_row(|row| {
                                             for i in 1..=5 {
-                                                let star = if i < rating { '★' } else { '☆' };
-                                                let button_style = if i > rating { ButtonStyle::Secondary } else { ButtonStyle::Primary };
+                                                let star = if i <= rating { '★' } else { '☆' };
+                                                let button_style = if i <= rating { ButtonStyle::Primary } else { ButtonStyle::Secondary };
 
                                                 row.create_button(|btn| {
                                                     btn.custom_id(format!("star_{}_{}_{}", poll.id, option.id, i))
@@ -64,6 +64,13 @@ pub async fn handle_vote_button(
                                             row
                                         });
                                     }
+                                    c.create_action_row(|row| {
+                                        row.create_button(|btn| {
+                                            btn.custom_id(format!("done_voting_{}", poll.id))
+                                               .label("Done Voting")
+                                               .style(ButtonStyle::Success)
+                                        })
+                                    });
                                     c
                                 })
                         })
@@ -85,10 +92,14 @@ pub async fn handle_vote_button(
                                         c.create_action_row(|row| {
                                             for _ in 0..5 {
                                                 if let Some(option) = options_iter.next() {
+                                                    let selected = option_ratings.get(&option.id).copied().unwrap_or(0) > 0;
+                                                    let style = if selected { ButtonStyle::Success } else { ButtonStyle::Primary };
+                                                    let prefix = if selected { "✓ " } else { "" };
+                                                    
                                                     row.create_button(|btn| {
                                                         btn.custom_id(format!("plurality_{}_{}", poll.id, option.id))
-                                                           .label(&option.text)
-                                                           .style(ButtonStyle::Primary)
+                                                           .label(format!("{}{}", prefix, option.text))
+                                                           .style(style)
                                                     });
                                                 } else {
                                                     break;
@@ -97,6 +108,13 @@ pub async fn handle_vote_button(
                                             row
                                         });
                                     }
+                                    c.create_action_row(|row| {
+                                        row.create_button(|btn| {
+                                            btn.custom_id(format!("done_voting_{}", poll.id))
+                                               .label("Done Voting")
+                                               .style(ButtonStyle::Success)
+                                        })
+                                    });
                                     c
                                 })
                         })
@@ -118,10 +136,15 @@ pub async fn handle_vote_button(
                                         c.create_action_row(|row| {
                                             for _ in 0..5 {
                                                 if let Some(option) = options_iter.next() {
+                                                    let value = option_ratings.get(&option.id).copied().unwrap_or(0);
+                                                    let display_symbol = if value > 0 { "✅" } else { "❌" };
+                                                    let button_style = if value > 0 { ButtonStyle::Success } else { ButtonStyle::Danger };
+                                                    
                                                     row.create_button(|btn| {
-                                                        btn.custom_id(format!("approval_{}_{}_0", poll.id, option.id))
-                                                           .label(format!("❌ {}", option.text))
-                                                           .style(ButtonStyle::Danger)
+                                                        btn.custom_id(format!("approval_{}_{}_{}",
+                                                            poll.id, option.id, value))
+                                                           .label(format!("{} {}", display_symbol, option.text))
+                                                           .style(button_style)
                                                     });
                                                 } else {
                                                     break;
@@ -132,8 +155,8 @@ pub async fn handle_vote_button(
                                     }
                                     c.create_action_row(|row| {
                                         row.create_button(|btn| {
-                                            btn.custom_id(format!("approval_submit_{}", poll.id))
-                                               .label("Submit Votes")
+                                            btn.custom_id(format!("done_voting_{}", poll.id))
+                                               .label("Done Voting")
                                                .style(ButtonStyle::Success)
                                         })
                                     });
@@ -198,16 +221,19 @@ pub async fn handle_vote_button(
                                                 btn.custom_id(format!("rank_up_{}_{}", poll.id, option.id))
                                                    .emoji('⬆')
                                                    .style(ButtonStyle::Primary)
+                                                   .disabled(*current_rank == 1)
                                             })
                                             .create_button(|btn| {
                                                 btn.custom_id(format!("rank_down_{}_{}", poll.id, option.id))
                                                    .emoji('⬇')
                                                    .style(ButtonStyle::Primary)
+                                                   .disabled(*current_rank == 0 || *current_rank == option_ranks.values().filter(|&&r| r > 0).count() as i32)
                                             })
                                             .create_button(|btn| {
                                                 btn.custom_id(format!("rank_remove_{}_{}", poll.id, option.id))
                                                    .emoji('🗑')
                                                    .style(ButtonStyle::Danger)
+                                                   .disabled(*current_rank == 0)
                                             })
                                         });
                                         if *current_rank > 0 {
@@ -216,8 +242,8 @@ pub async fn handle_vote_button(
                                     }
                                     c.create_action_row(|row| {
                                         row.create_button(|btn| {
-                                            btn.custom_id(format!("rank_submit_{}", poll.id))
-                                               .label("Submit Rankings")
+                                            btn.custom_id(format!("done_voting_{}", poll.id))
+                                               .label("Done Voting")
                                                .style(ButtonStyle::Success)
                                         })
                                     });
@@ -241,6 +267,7 @@ pub async fn handle_star_vote(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("Recording star vote: poll_id={}, option_id={}, rating={}", poll_id, option_id, rating);
 
+    // Save the vote immediately
     let vote = crate::models::Vote {
         user_id: component.user.id.to_string(),
         poll_id: poll_id.to_string(),
@@ -282,6 +309,13 @@ pub async fn handle_star_vote(
                                    row
                                });
                            }
+                           c.create_action_row(|row| {
+                               row.create_button(|btn| {
+                                   btn.custom_id(format!("done_voting_{}", poll.id))
+                                      .label("Done Voting")
+                                      .style(ButtonStyle::Success)
+                               })
+                           });
                            c
                        })
                 })
@@ -304,6 +338,7 @@ pub async fn handle_plurality_vote(
 
     let user_id = component.user.id.to_string();
 
+    // Save the votes immediately
     for option in &poll.options {
         let rating = if option.id == option_id { 1 } else { 0 };
 
@@ -318,23 +353,61 @@ pub async fn handle_plurality_vote(
         database.save_vote(&vote).await?;
     }
 
+    // Get updated votes to display current state
+    let existing_votes = database.get_user_poll_votes(poll_id, &user_id).await?;
+    let mut option_ratings = std::collections::HashMap::<String, i32>::new();
+    for vote in &existing_votes {
+        option_ratings.insert(vote.option_id.clone(), vote.rating);
+    }
+
     component
         .create_interaction_response(&ctx.http, |response| {
             response
-                .kind(InteractionResponseType::ChannelMessageWithSource)
+                .kind(InteractionResponseType::UpdateMessage)
                 .interaction_response_data(|message| {
                     message
-                        .content("Your vote has been recorded.")
-                        .ephemeral(true)
+                        .content(format!("**{}**\nSelect ONE option:", poll.question))
+                        .components(|c| {
+                            let mut options_iter = poll.options.iter().peekable();
+                            while options_iter.peek().is_some() {
+                                c.create_action_row(|row| {
+                                    for _ in 0..5 {
+                                        if let Some(option) = options_iter.next() {
+                                            let selected = option_ratings.get(&option.id).copied().unwrap_or(0) > 0;
+                                            let style = if selected { ButtonStyle::Success } else { ButtonStyle::Primary };
+                                            let prefix = if selected { "✓ " } else { "" };
+                                            
+                                            row.create_button(|btn| {
+                                                btn.custom_id(format!("plurality_{}_{}", poll_id, option.id))
+                                                   .label(format!("{}{}", prefix, option.text))
+                                                   .style(style)
+                                            });
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    row
+                                });
+                            }
+                            c.create_action_row(|row| {
+                                row.create_button(|btn| {
+                                    btn.custom_id(format!("done_voting_{}", poll_id))
+                                       .label("Done Voting")
+                                       .style(ButtonStyle::Success)
+                                })
+                            });
+                            c
+                        })
                 })
         })
         .await?;
 
-    info!("Successfully recorded plurality vote");
+    info!("Successfully recorded plurality vote and updated UI");
     Ok(())
 }
 
 pub async fn handle_approval_vote_toggle(
+    database: &Database,
     ctx: &Context,
     component: &MessageComponentInteraction,
     poll_id: &str,
@@ -350,6 +423,17 @@ pub async fn handle_approval_vote_toggle(
         .find(|o| o.id == option_id)
         .map(|o| o.text.clone())
         .unwrap_or_else(|| "Option".to_string());
+
+    // Save the vote immediately
+    let vote = crate::models::Vote {
+        user_id: component.user.id.to_string(),
+        poll_id: poll_id.to_string(),
+        option_id: option_id.to_string(),
+        rating: new_value,
+        timestamp: Utc::now(),
+    };
+    
+    database.save_vote(&vote).await?;
 
     component
         .create_interaction_response(&ctx.http, |response| {
@@ -388,59 +472,131 @@ pub async fn handle_approval_vote_toggle(
     Ok(())
 }
 
-pub async fn handle_approval_submit(
+pub async fn handle_done_voting(
     database: &Database,
     ctx: &Context,
     component: &MessageComponentInteraction,
     poll_id: &str,
+    poll: &Poll,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    info!("Submitting approval votes: poll_id={}", poll_id);
-
+    info!("User completed voting for poll_id={}", poll_id);
     let user_id = component.user.id.to_string();
-    let mut votes = Vec::new();
-
-    for row in &component.message.components {
-        for comp in &row.components {
-            if let ActionRowComponent::Button(button_data) = comp {
-                if let Some(custom_id) = &button_data.custom_id {
-                    if custom_id.starts_with("approval_") && !custom_id.starts_with("approval_submit_") {
-                        let parts: Vec<&str> = custom_id.split('_').collect();
-                        if parts.len() >= 4 {
-                            let option_id = parts[2];
-                            let value: i32 = parts[3].parse().unwrap_or(0);
-
-                            votes.push(crate::models::Vote {
-                                user_id: user_id.clone(),
-                                poll_id: poll_id.to_string(),
-                                option_id: option_id.to_string(),
-                                rating: value,
-                                timestamp: Utc::now(),
-                            });
-                        }
-                    }
+    
+    // Get the user's current votes
+    let user_votes = database.get_user_poll_votes(poll_id, &user_id).await?;
+    
+    // Generate vote summary based on voting method
+    let mut vote_summary = format!("**{}**\n{} Voting\n\nYour vote has been recorded:\n", 
+        poll.question, poll.voting_method);
+    
+    match poll.voting_method {
+        crate::models::VotingMethod::Star => {
+            let mut vote_map = std::collections::HashMap::new();
+            for vote in &user_votes {
+                vote_map.insert(vote.option_id.clone(), vote.rating);
+            }
+            
+            for option in &poll.options {
+                let rating = vote_map.get(&option.id).cloned().unwrap_or(0);
+                let stars = "★".repeat(rating as usize);
+                let empty_stars = "☆".repeat((5 - rating) as usize);
+                vote_summary.push_str(&format!("{}: {}{}\n", option.text, stars, empty_stars));
+            }
+        },
+        crate::models::VotingMethod::Plurality => {
+            for option in &poll.options {
+                let selected = user_votes.iter()
+                    .any(|v| v.option_id == option.id && v.rating > 0);
+                let symbol = if selected { "✓" } else { " " };
+                vote_summary.push_str(&format!("{}: {}\n", option.text, symbol));
+            }
+        },
+        crate::models::VotingMethod::Approval => {
+            let mut vote_map = std::collections::HashMap::new();
+            for vote in &user_votes {
+                vote_map.insert(vote.option_id.clone(), vote.rating);
+            }
+            
+            for option in &poll.options {
+                // Only consider options with rating=1 as approved
+                let approved = vote_map.get(&option.id).copied().unwrap_or(0) == 1;
+                let symbol = if approved { "✅" } else { "❌" };
+                vote_summary.push_str(&format!("{}: {}\n", option.text, symbol));
+            }
+        },
+        crate::models::VotingMethod::Ranked => {
+            let mut rankings = std::collections::HashMap::new();
+            for vote in &user_votes {
+                if vote.rating > 0 {
+                    rankings.insert(vote.option_id.clone(), vote.rating);
+                }
+            }
+            
+            let mut ranked_options = poll.options.clone();
+            ranked_options.sort_by(|a, b| {
+                let rank_a = rankings.get(&a.id).unwrap_or(&0);
+                let rank_b = rankings.get(&b.id).unwrap_or(&0);
+                
+                if rank_a == &0 && rank_b == &0 {
+                    return a.text.cmp(&b.text);
+                }
+                
+                if rank_a == &0 {
+                    return std::cmp::Ordering::Greater;
+                }
+                
+                if rank_b == &0 {
+                    return std::cmp::Ordering::Less;
+                }
+                
+                rank_a.cmp(rank_b)
+            });
+            
+            for option in &ranked_options {
+                let rank = rankings.get(&option.id).cloned().unwrap_or(0);
+                if rank > 0 {
+                    vote_summary.push_str(&format!("#{}: {}\n", rank, option.text));
+                } else {
+                    vote_summary.push_str(&format!("Unranked: {}\n", option.text));
                 }
             }
         }
     }
-
-    for vote in votes {
-        database.save_vote(&vote).await?;
-    }
-
+    
     component
         .create_interaction_response(&ctx.http, |response| {
             response
-                .kind(InteractionResponseType::ChannelMessageWithSource)
+                .kind(InteractionResponseType::UpdateMessage)
                 .interaction_response_data(|message| {
                     message
-                        .content("Your votes have been recorded.")
-                        .ephemeral(true)
+                        .content(&vote_summary)
+                        .components(|c| {
+                            c.create_action_row(|row| {
+                                row.create_button(|btn| {
+                                    btn.custom_id(format!("vote_change_{}", poll_id))
+                                       .label("Change My Vote")
+                                       .style(ButtonStyle::Secondary)
+                                })
+                            })
+                        })
                 })
         })
         .await?;
 
-    info!("Successfully recorded approval votes");
+    info!("Successfully displayed vote confirmation");
     Ok(())
+}
+
+pub async fn handle_change_vote(
+    database: &Database,
+    ctx: &Context,
+    component: &MessageComponentInteraction,
+    poll_id: &str,
+    poll: &Poll,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    info!("User wants to change their vote for poll_id={}", poll_id);
+    // Reuse handle_vote_button to show the voting interface again
+    handle_vote_button(database, ctx, component, poll).await
 }
 
 pub async fn handle_rank_action(
@@ -516,6 +672,7 @@ pub async fn handle_rank_action(
         _ => {}
     }
 
+    // Save all votes immediately
     for option in &poll.options {
         let rank = rankings.get(&option.id).cloned().unwrap_or(0);
 
@@ -593,8 +750,8 @@ pub async fn handle_rank_action(
                             
                             c.create_action_row(|row| {
                                 row.create_button(|btn| {
-                                    btn.custom_id(format!("rank_submit_{}", poll.id))
-                                       .label("Submit Rankings")
+                                    btn.custom_id(format!("done_voting_{}", poll.id))
+                                       .label("Done Voting")
                                        .style(ButtonStyle::Success)
                                 })
                             });
@@ -613,7 +770,16 @@ pub async fn handle_rank_submit(
     ctx: &Context,
     component: &MessageComponentInteraction,
     poll_id: &str,
+    poll: Option<&Poll>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    info!("Handling rank submit for poll {}", poll_id);
+    
+    // If we have the poll object, use handle_done_voting for the enhanced experience
+    if let Some(p) = poll {
+        return handle_done_voting(database, ctx, component, poll_id, p).await;
+    }
+    
+    // Legacy behavior - just show a simple confirmation message
     component
         .create_interaction_response(&ctx.http, |response| {
             response
@@ -626,6 +792,29 @@ pub async fn handle_rank_submit(
         })
         .await?;
     
-    info!("Successfully recorded ranked choice votes");
+    Ok(())
+}
+
+pub async fn handle_approval_submit(
+    database: &Database,
+    ctx: &Context,
+    component: &MessageComponentInteraction,
+    poll_id: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    info!("Legacy approval submit handler called for poll {}", poll_id);
+    
+    // Simple success message for backward compatibility
+    component
+        .create_interaction_response(&ctx.http, |response| {
+            response
+                .kind(InteractionResponseType::ChannelMessageWithSource)
+                .interaction_response_data(|message| {
+                    message
+                        .content("Your votes have been recorded.")
+                        .ephemeral(true)
+                })
+        })
+        .await?;
+    
     Ok(())
 }

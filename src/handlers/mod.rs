@@ -33,14 +33,20 @@ pub async fn handle_command(
 // Helper function to parse poll_id from custom_id
 fn parse_poll_id_from_custom_id(custom_id: &str) -> Option<String> {
     let parts: Vec<&str> = custom_id.split('_').collect();
-    if custom_id.starts_with("vote_") && parts.len() >= 3 {
-        Some(parts[1].to_string())
+    if custom_id.starts_with("vote_") && custom_id != "vote_button" && parts.len() >= 3 {
+        Some(parts[2].to_string())
     } else if custom_id.starts_with("star_") && parts.len() >= 4 {
         Some(parts[1].to_string())
     } else if custom_id.starts_with("plurality_") && parts.len() >= 3 {
         Some(parts[1].to_string())
+    }
+    // Handle done_voting and vote_change buttons
+    else if custom_id.starts_with("done_voting_") && parts.len() >= 2 {
+        Some(parts[2].to_string())
+    } else if custom_id.starts_with("vote_change_") && parts.len() >= 3 {
+        Some(parts[2].to_string())
     } 
-    // Moved approval_submit_ condition before generic approval_ to avoid mis-parsing
+    // Handle legacy approval submit (soon to be removed)
     else if custom_id.starts_with("approval_submit_") && parts.len() >= 3 {
         Some(parts[2].to_string())
     } else if custom_id.starts_with("approval_") && parts.len() >= 3 {
@@ -201,9 +207,9 @@ pub async fn handle_component(
             let poll_id = parts[1];
             let option_id = parts[2];
             let current_value: i32 = parts[3].parse().unwrap_or(0);
-            // Pass the fetched poll object
+            // Pass the database and poll object
             if let Some(p) = poll {
-                vote::handle_approval_vote_toggle(ctx, component, poll_id, option_id, current_value, &p).await?;
+                vote::handle_approval_vote_toggle(database, ctx, component, poll_id, option_id, current_value, &p).await?;
             } else { error!("Poll object unavailable for approval toggle."); /* Handle error */ }
         } else { error!("Invalid custom_id format for approval toggle: {}", custom_id); }
     }
@@ -213,8 +219,49 @@ pub async fn handle_component(
         let parts: Vec<&str> = custom_id.split('_').collect();
         if parts.len() >= 3 {
             let poll_id = parts[2];
-            vote::handle_approval_submit(database, ctx, component, poll_id).await?;
+            // For backwards compatibility
+            if let Some(p) = poll {
+                vote::handle_done_voting(database, ctx, component, poll_id, &p).await?;
+            } else {
+                vote::handle_approval_submit(database, ctx, component, poll_id).await?;
+            }
         } else { error!("Invalid custom_id format for approval submit: {}", custom_id); }
+    }
+    // Handle "Done Voting" button for any voting method
+    else if custom_id.starts_with("done_voting_") {
+        // Format: done_voting_<poll_id>
+        let parts: Vec<&str> = custom_id.split('_').collect();
+        if parts.len() >= 2 {
+            let poll_id = parts[1];
+            if let Some(p) = poll {
+                vote::handle_done_voting(database, ctx, component, poll_id, &p).await?;
+            } else { 
+                error!("Poll object unavailable for done voting action.");
+                component.create_interaction_response(&ctx.http, |response| {
+                    response
+                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .interaction_response_data(|message| message.content("Error processing your vote completion.").ephemeral(true))
+                }).await?;
+            }
+        } else { error!("Invalid custom_id format for done voting: {}", custom_id); }
+    }
+    // Handle "Change My Vote" button
+    else if custom_id.starts_with("vote_change_") {
+        // Format: vote_change_<poll_id>
+        let parts: Vec<&str> = custom_id.split('_').collect();
+        if parts.len() >= 3 {
+            let poll_id = parts[2];
+            if let Some(p) = poll {
+                vote::handle_change_vote(database, ctx, component, poll_id, &p).await?;
+            } else { 
+                error!("Poll object unavailable for change vote action.");
+                component.create_interaction_response(&ctx.http, |response| {
+                    response
+                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .interaction_response_data(|message| message.content("Error returning to voting interface.").ephemeral(true))
+                }).await?;
+            }
+        } else { error!("Invalid custom_id format for change vote: {}", custom_id); }
     }
     // Handle ranked choice voting actions
     else if custom_id.starts_with("rank_up_") ||
@@ -235,13 +282,14 @@ pub async fn handle_component(
             } else { error!("Poll object unavailable for rank action."); /* Handle error */ }
         } else { error!("Invalid custom_id format for rank action: {}", custom_id); }
     }
-    // Handle ranked choice submit
+    // Handle ranked choice submit (legacy, for backward compatibility)
     else if custom_id.starts_with("rank_submit_") {
         // Format: rank_submit_<poll_id>
         let parts: Vec<&str> = custom_id.split('_').collect();
         if parts.len() >= 3 {
             let poll_id = parts[2];
-            vote::handle_rank_submit(database, ctx, component, poll_id).await?;
+            // Pass the poll as an Option to the updated function signature
+            vote::handle_rank_submit(database, ctx, component, poll_id, poll.as_ref()).await?;
         } else { error!("Invalid custom_id format for rank submit: {}", custom_id); }
     } else if custom_id.starts_with("label_") || custom_id.starts_with("rank_label_") {
          // Ignore clicks on disabled label buttons, acknowledge to prevent "Interaction failed"
