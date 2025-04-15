@@ -3,7 +3,7 @@ mod db;
 mod handlers;
 mod models;
 mod voting;
-mod tasks; // Add tasks module
+mod tasks; 
 
 use db::Database;
 use serenity::async_trait;
@@ -13,7 +13,12 @@ use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use std::env;
 use std::sync::Arc;
-use log::{info, error, warn}; // Added warn
+use log::{info, error, warn}; 
+
+// Custom ID format for components:
+// We use camelCase format for action names (e.g., starSelect, pluralityVote)
+// Format: actionName_pollId_optionId[_additionalData]
+// This makes parsing poll IDs more consistent (always at index 1)
 
 struct Bot {
     database: Arc<Database>,

@@ -303,6 +303,7 @@ fn create_poll_embed<'a>(embed: &'a mut CreateEmbed, poll: &Poll) -> &'a mut Cre
         .timestamp(poll.created_at.to_rfc3339())
 }
 
+// Using camelCase format for consistency
 fn create_poll_components<'a>(row: &'a mut CreateActionRow, poll: &Poll) -> &'a mut CreateActionRow {
     if !poll.is_active {
         return row;
@@ -310,7 +311,7 @@ fn create_poll_components<'a>(row: &'a mut CreateActionRow, poll: &Poll) -> &'a 
 
     row.create_button(|button| {
         button
-            .custom_id("vote_button")
+            .custom_id("voteButton") // Using camelCase format for consistency
             .style(ButtonStyle::Primary)
             .label("Cast Your Vote")
     })

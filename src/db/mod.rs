@@ -433,6 +433,28 @@ impl Database {
         &self,
         vote: &crate::models::Vote,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // First verify the poll and option exist
+        let poll_exists = sqlx::query("SELECT 1 FROM polls WHERE id = ?")
+            .bind(&vote.poll_id)
+            .fetch_optional(&self.pool)
+            .await?
+            .is_some();
+
+        if !poll_exists {
+            return Err("Poll not found".into());
+        }
+
+        let option_exists = sqlx::query("SELECT 1 FROM poll_options WHERE id = ? AND poll_id = ?")
+            .bind(&vote.option_id)
+            .bind(&vote.poll_id)
+            .fetch_optional(&self.pool)
+            .await?
+            .is_some();
+
+        if !option_exists {
+            return Err("Poll option not found".into());
+        }
+
         sqlx::query(
             r#"
             INSERT INTO votes (user_id, poll_id, option_id, rating, timestamp)
