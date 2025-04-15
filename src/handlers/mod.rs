@@ -146,6 +146,10 @@ pub async fn handle_component(
             warn!("Invalid starSelect format: {}", custom_id);
         }
     } else if custom_id.starts_with("starPage_") {
+        let parts: Vec<&str> = custom_id.split('_').collect();
+        if parts.len() >= 3 {
+            info!("Navigating to star voting page {}", parts[2]);
+        }
         if let Some(p) = poll {
             vote::handle_vote_button(database, ctx, component, &p).await?;
         }

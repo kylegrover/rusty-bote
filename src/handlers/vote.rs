@@ -85,6 +85,12 @@ pub async fn handle_vote_button(
                                                         format!("{} - Rate this option", truncated_name)
                                                     })
                                                     .options(|opts| {
+                                                        opts.create_option(|opt| {
+                                                            opt.label(format!("{} - No rating", short_name))
+                                                               .description(format!("{} - Clear rating", truncated_name))
+                                                               .value("0".to_string())
+                                                               .default_selection(rating == 0)
+                                                        });
                                                         for i in 1..=5 {
                                                             let stars = "⭐".repeat(i as usize);
                                                             opts.create_option(|opt| {
@@ -313,12 +319,8 @@ pub async fn handle_star_vote(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("Recording star vote: poll_id={}, option_id={}, rating={}", poll_id, option_id, rating);
 
-    if rating == 0 {
-        info!("User selected a 0-star rating, removing/ignoring. Returning early.");
-        return Ok(());
-    }
-    if rating < 1 || rating > 5 {
-        warn!("Rating out of 1-5 range: {}", rating);
+    if rating < 0 || rating > 5 {
+        warn!("Rating out of 0-5 range: {}", rating);
         return Ok(());
     }
 
@@ -333,8 +335,11 @@ pub async fn handle_star_vote(
     database.save_vote(&vote).await?;
     let poll = database.get_poll(poll_id).await?;
 
-    let current_page = 0;
+    // Find which page this option is on
     let options_per_page = 4;
+    let option_index = poll.options.iter().position(|o| o.id == option_id).unwrap_or(0);
+    let current_page = option_index / options_per_page;
+    
     let total_pages = (poll.options.len() + options_per_page - 1) / options_per_page;
     let start_idx = current_page * options_per_page;
     let end_idx = std::cmp::min(start_idx + options_per_page, poll.options.len());
@@ -360,8 +365,8 @@ pub async fn handle_star_vote(
                        .components(|c| {
                             for option in options_to_show {
                                 let rating = option_ratings.get(&option.id).copied().unwrap_or(0);
-                                let truncated_name = if option.text.len() > 80 {
-                                    format!("{}...", &option.text[..77])
+                                let truncated_name = if option.text.len() > 30 {
+                                    format!("{}...", &option.text[..27])
                                 } else {
                                     option.text.clone()
                                 };
@@ -375,6 +380,12 @@ pub async fn handle_star_vote(
                                                 format!("{} - Rate this option", truncated_name)
                                             })
                                             .options(|opts| {
+                                                opts.create_option(|opt| {
+                                                    opt.label(format!("{} - No rating", truncated_name))
+                                                       .description("Clear rating")
+                                                       .value("0".to_string())
+                                                       .default_selection(rating == 0)
+                                                });
                                                 for i in 1..=5 {
                                                     let stars = "⭐".repeat(i as usize);
                                                     opts.create_option(|opt| {
