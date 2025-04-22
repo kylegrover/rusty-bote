@@ -54,10 +54,11 @@ pub async fn handle_vote_button(
                 String::from("\nRate each option from 1-5 stars")
             };
 
+            // Use UpdateMessage so the same message is updated, not a new one
             component
                 .create_interaction_response(&ctx.http, |response| {
                     response
-                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .kind(InteractionResponseType::UpdateMessage)
                         .interaction_response_data(|message| {
                             message
                                 .content(format!("**{}**{}", poll.question, pagination_info))
