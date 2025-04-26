@@ -54,13 +54,13 @@ pub async fn handle_vote_button(
                 String::from("\nRate each option from 1-5 stars")
             };
 
-            // Use UpdateMessage so the same message is updated, not a new one
             component
                 .create_interaction_response(&ctx.http, |response| {
                     response
-                        .kind(InteractionResponseType::UpdateMessage)
+                        .kind(InteractionResponseType::ChannelMessageWithSource)
                         .interaction_response_data(|message| {
                             message
+                                .ephemeral(true)
                                 .content(format!("**{}**{}", poll.question, pagination_info))
                                 .components(|c| {
                                     for option in options_to_show {
@@ -142,6 +142,7 @@ pub async fn handle_vote_button(
                         .kind(InteractionResponseType::ChannelMessageWithSource)
                         .interaction_response_data(|message| {
                             message
+                                .ephemeral(true)
                                 .content(format!("**{}**\nSelect ONE option:", poll.question))
                                 .components(|c| {
                                     let mut options_iter = poll.options.iter().peekable();
@@ -185,6 +186,7 @@ pub async fn handle_vote_button(
                         .kind(InteractionResponseType::ChannelMessageWithSource)
                         .interaction_response_data(|message| {
                             message
+                                .ephemeral(true)
                                 .content(format!("**{}**\nApprove as many options as you like:", poll.question))
                                 .components(|c| {
                                     let mut options_iter = poll.options.iter().peekable();
@@ -255,6 +257,7 @@ pub async fn handle_vote_button(
                         .kind(InteractionResponseType::ChannelMessageWithSource)
                         .interaction_response_data(|message| {
                             message
+                                .ephemeral(true)
                                 .content(format!("**{}**\nRank the options in your order of preference:", poll.question))
                                 .components(|c| {
                                     for option in &ranked_options {
@@ -362,7 +365,8 @@ pub async fn handle_star_vote(
         .create_interaction_response(&ctx.http, |resp| {
             resp.kind(InteractionResponseType::UpdateMessage)
                 .interaction_response_data(|msg| {
-                    msg.content(format!("**{}**{}", poll.question, pagination_info))
+                    msg.ephemeral(true)
+                       .content(format!("**{}**{}", poll.question, pagination_info))
                        .components(|c| {
                             for option in options_to_show {
                                 let rating = option_ratings.get(&option.id).copied().unwrap_or(0);
@@ -486,6 +490,7 @@ pub async fn handle_plurality_vote(
                 .kind(InteractionResponseType::UpdateMessage)
                 .interaction_response_data(|message| {
                     message
+                        .ephemeral(true)
                         .content(format!("**{}**\nSelect ONE option:", poll.question))
                         .components(|c| {
                             let mut options_iter = poll.options.iter().peekable();
@@ -558,32 +563,34 @@ pub async fn handle_approval_vote_toggle(
             response
                 .kind(InteractionResponseType::UpdateMessage)
                 .interaction_response_data(|message| {
-                    message.components(|c| {
-                        for row_data in &component.message.components {
-                            c.create_action_row(|ar| {
-                                for comp_data in &row_data.components {
-                                    if let ActionRowComponent::Button(button_data) = comp_data {
-                                        if button_data.custom_id.as_deref() == Some(&component.data.custom_id) {
-                                            ar.create_button(|b| {
-                                                b.custom_id(format!("approvalVote_{}_{}_{}", poll_id, option_id, new_value))
-                                                 .label(format!("{} {}", display_symbol, option_text))
-                                                 .style(button_style)
-                                            });
-                                        } else {
-                                            ar.create_button(|b| {
-                                                b.custom_id(button_data.custom_id.clone().unwrap_or_default())
-                                                 .label(button_data.label.clone().unwrap_or_default())
-                                                 .style(button_data.style)
-                                                 .disabled(button_data.disabled)
-                                            });
+                    message
+                        .ephemeral(true)
+                        .components(|c| {
+                            for row_data in &component.message.components {
+                                c.create_action_row(|ar| {
+                                    for comp_data in &row_data.components {
+                                        if let ActionRowComponent::Button(button_data) = comp_data {
+                                            if button_data.custom_id.as_deref() == Some(&component.data.custom_id) {
+                                                ar.create_button(|b| {
+                                                    b.custom_id(format!("approvalVote_{}_{}_{}", poll_id, option_id, new_value))
+                                                     .label(format!("{} {}", display_symbol, option_text))
+                                                     .style(button_style)
+                                                });
+                                            } else {
+                                                ar.create_button(|b| {
+                                                    b.custom_id(button_data.custom_id.clone().unwrap_or_default())
+                                                     .label(button_data.label.clone().unwrap_or_default())
+                                                     .style(button_data.style)
+                                                     .disabled(button_data.disabled)
+                                                });
+                                            }
                                         }
                                     }
-                                }
-                                ar
-                            });
-                        }
-                        c
-                    })
+                                    ar
+                                });
+                            }
+                            c
+                        })
                 })
         })
         .await?;
