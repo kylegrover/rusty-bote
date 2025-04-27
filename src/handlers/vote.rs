@@ -620,9 +620,8 @@ pub async fn handle_done_voting(
             }
             for option in &poll.options {
                 let rating = vote_map.get(&option.id).cloned().unwrap_or(0);
-                let stars = "★".repeat(rating as usize);
-                let empty_stars = "☆".repeat(5 - rating as usize);
-                vote_summary.push_str(&format!("{}: {}{}\n", option.text, stars, empty_stars));
+                let stars = "⭐".repeat(rating as usize);
+                vote_summary.push_str(&format!("{}: {}\n", option.text, stars));
             }
         },
         crate::models::VotingMethod::Plurality => {
