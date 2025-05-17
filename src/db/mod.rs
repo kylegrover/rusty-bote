@@ -45,7 +45,7 @@ impl Database {
                 voting_method TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 ends_at TEXT,
-                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                is_active INTEGER NOT NULL DEFAULT 1,
                 message_id TEXT
             );
             "#,
@@ -111,7 +111,7 @@ impl Database {
         })
         .bind(poll.created_at.to_rfc3339())
         .bind(poll.ends_at.map(|dt| dt.to_rfc3339()))
-        .bind(poll.is_active)
+        .bind(if poll.is_active { 1i64 } else { 0i64 })
         .execute(&self.pool)
         .await?;
 
@@ -180,7 +180,7 @@ impl Database {
         let voting_method_str = poll_row.get::<String, _>("voting_method");
         let created_at_str = poll_row.get::<String, _>("created_at");
         let ends_at_str: Option<String> = poll_row.get("ends_at");
-        let is_active = poll_row.get::<bool, _>("is_active");
+        let is_active = poll_row.get::<i64, _>("is_active") != 0;
         let message_id: Option<String> = poll_row.get("message_id");
         
         // Parse dates
@@ -252,8 +252,8 @@ impl Database {
         sqlx::query(
             r#"
             UPDATE polls
-            SET is_active = FALSE
-            WHERE id = ? AND is_active = TRUE
+            SET is_active = 0
+            WHERE id = ? AND is_active = 1
             "#,
         )
         .bind(poll_id)
@@ -272,7 +272,7 @@ impl Database {
             r#"
             SELECT id, channel_id, message_id
             FROM polls
-            WHERE ends_at IS NOT NULL AND ends_at < ? AND is_active = TRUE
+            WHERE ends_at IS NOT NULL AND ends_at < ? AND is_active = 1
             "#,
         )
         .bind(now.to_rfc3339())
@@ -299,7 +299,7 @@ impl Database {
             r#"
             SELECT id, question, ends_at
             FROM polls
-            WHERE guild_id = ? AND is_active = TRUE
+            WHERE guild_id = ? AND is_active = 1
             ORDER BY created_at DESC
             "#,
         )
@@ -336,7 +336,7 @@ impl Database {
             r#"
             SELECT id, question, ends_at
             FROM polls
-            WHERE guild_id = ? AND is_active = FALSE
+            WHERE guild_id = ? AND is_active = 0
             ORDER BY ends_at DESC
             LIMIT ?
             "#,
