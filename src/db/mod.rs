@@ -1,41 +1,39 @@
-use sqlx::{migrate::MigrateDatabase, sqlite::{SqlitePool, SqlitePoolOptions}, Sqlite, Row};
+use sqlx::{Row, AnyPool, any::{AnyPoolOptions}};
+use sqlx::any::install_default_drivers;
 use chrono::{DateTime, Utc};
 use std::env;
-use crate::models::{Poll, PollOption, Vote, VotingMethod};
+use crate::models::{Poll, VotingMethod};
 
 pub struct Database {
-    pool: SqlitePool,
+    pool: AnyPool,
 }
 
 impl Database {
     pub async fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        // Install drivers for all supported backends
+        install_default_drivers();
         // Get database URL from environment or use a default
         let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:rusty_bote.db".to_string());
-        
-        // Create database if it doesn't exist
-        if !Sqlite::database_exists(&db_url).await.unwrap_or(false) {
-            Sqlite::create_database(&db_url).await?;
-        }
-        
-        // Connect to the database
-        let pool = SqlitePoolOptions::new()
+
+        // Connect to the database (let the backend create the DB if needed)
+        let pool = AnyPoolOptions::new()
             .max_connections(5)
             .connect(&db_url)
             .await?;
-        
+
         // Initialize schema
         Self::init_schema(&pool).await?;
-        
+
         Ok(Self { pool })
     }
     
     // Get a reference to the connection pool
-    pub fn pool(&self) -> &SqlitePool {
+    pub fn pool(&self) -> &AnyPool {
         &self.pool
     }
     
     // Initialize the database schema
-    async fn init_schema(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn init_schema(pool: &AnyPool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS polls (
@@ -344,7 +342,7 @@ impl Database {
             "#,
         )
         .bind(guild_id)
-        .bind(limit)
+        .bind(limit as i64)
         .fetch_all(&self.pool)
         .await?;
 

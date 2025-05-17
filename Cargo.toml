@@ -9,7 +9,7 @@ serenity = { version = "0.11", default-features = false, features = ["client", "
 tokio = { version = "1.21", features = ["macros", "rt-multi-thread"] }
 
 # Database
-sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "postgres", "chrono", "uuid"] }
 dotenvy = "0.15"
 
 # Utilities
