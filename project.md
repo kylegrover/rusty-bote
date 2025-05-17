@@ -51,7 +51,6 @@ The bot uses SQLite as its database solution, which provides:
    - Options (candidates/choices)
    - Voting method selection
    - Poll duration (or manual close option)
-   - Additional settings (e.g., anonymous voting)
 3. Bot creates and posts the poll as an embed with interactive components
 
 ### Voting Process
@@ -86,7 +85,6 @@ The `/poll help` subcommand provides a concise overview of Rusty-Bote. It summar
 - `options` - The available choices (minimum: 2, maximum: 10)  
 - `method` - Voting method (STAR, plurality, ranked choice, approval)  
 - `duration` - Duration of the poll in minutes (0 = manual close)  
-- `anonymous` - Tracks whether votes should be anonymous (planned, not fully implemented yet)
 
 ## Development Roadmap
 

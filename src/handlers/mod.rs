@@ -212,10 +212,9 @@ pub async fn handle_component(
         };
         let parts: Vec<&str> = custom_id.split('_').collect();
         if parts.len() >= 3 {
-            let poll_id = parts[1];
             let option_id = parts[2];
             if let Some(p) = poll {
-                vote::handle_rank_action(database, ctx, component, &p.id, option_id, action, &p).await?;
+                vote::handle_rank_action(database, ctx, component, option_id, action, &p).await?;
             }
         } else {
             warn!("Invalid rank action format: {}", custom_id);

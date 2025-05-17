@@ -5,7 +5,7 @@ use serenity::model::application::interaction::{
 use serenity::model::application::component::{ActionRowComponent, ButtonStyle};
 use serenity::prelude::*;
 use chrono::Utc;
-use log::{info, warn, error};
+use log::{info, warn};
 use crate::models::Poll;
 
 pub async fn handle_vote_button(
@@ -714,7 +714,6 @@ pub async fn handle_rank_action(
     database: &Database,
     ctx: &Context,
     component: &MessageComponentInteraction,
-    poll_id: &str,
     option_id: &str,
     action: &str,
     poll: &Poll,

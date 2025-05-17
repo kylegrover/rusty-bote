@@ -4,7 +4,7 @@ use serenity::prelude::*;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 use chrono::Utc;
-use log::{info, error, warn};
+use log::{info, error};
 use tokio::time::interval;
 
 const CHECK_INTERVAL_SECONDS: u64 = 60; // Check every 60 seconds

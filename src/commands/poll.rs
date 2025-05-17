@@ -51,13 +51,13 @@ pub fn create_poll_command(command: &mut CreateApplicationCommand) -> &mut Creat
                         .kind(serenity::model::application::command::CommandOptionType::Integer)
                         .required(false)
                 })
-                .create_sub_option(|sub_option| {
-                    sub_option
-                        .name("anonymous")
-                        .description("Whether votes should be anonymous (default: true)")
-                        .kind(serenity::model::application::command::CommandOptionType::Boolean)
-                        .required(false)
-                })
+                // .create_sub_option(|sub_option| {
+                //     sub_option
+                //         .name("anonymous")
+                //         .description("Whether votes should be anonymous (default: true)")
+                //         .kind(serenity::model::application::command::CommandOptionType::Boolean)
+                //         .required(false)
+                // })
         })
         .create_option(|option| {
             option
@@ -161,7 +161,7 @@ async fn handle_create_poll(
     let mut options_str = String::new();
     let mut method_str = String::new();
     let mut duration: Option<i64> = None;
-    let mut anonymous = true;
+    // let mut anonymous = true;
 
     for option in options {
         match option.name.as_str() {
@@ -179,11 +179,11 @@ async fn handle_create_poll(
                     duration = Some(value.as_i64().unwrap_or(1440));
                 }
             }
-            "anonymous" => {
-                if let Some(value) = option.value.as_ref() {
-                    anonymous = value.as_bool().unwrap_or(true);
-                }
-            }
+            // "anonymous" => {
+            //     if let Some(value) = option.value.as_ref() {
+            //         anonymous = value.as_bool().unwrap_or(true);
+            //     }
+            // }
             _ => {}
         }
     }

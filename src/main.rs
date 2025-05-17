@@ -13,7 +13,7 @@ use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use std::env;
 use std::sync::Arc;
-use log::{info, error, warn}; 
+use log::{info, error}; 
 
 // Custom ID format for components:
 // We use camelCase format for action names (e.g., starSelect, pluralityVote)
