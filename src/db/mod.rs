@@ -172,25 +172,10 @@ impl Database {
         let creator_id = poll_row.get::<String, _>("creator_id");
         let question = poll_row.get::<String, _>("question");
         let voting_method_str = poll_row.get::<String, _>("voting_method");
-        let created_at_str = poll_row.get::<String, _>("created_at");
-        let ends_at_str: Option<String> = poll_row.get("ends_at");
-        let is_active = poll_row.get::<i64, _>("is_active") != 0;
+        let created_at = poll_row.get::<DateTime<Utc>, _>("created_at");
+        let ends_at: Option<DateTime<Utc>> = poll_row.try_get("ends_at").ok();
+        let is_active = poll_row.get::<bool, _>("is_active");
         let message_id: Option<String> = poll_row.get("message_id");
-        
-        // Parse dates
-        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
-            .map_err(|e| format!("Failed to parse created_at: {}", e))?
-            .with_timezone(&Utc);
-        
-        let ends_at = if let Some(ends_at_str) = ends_at_str {
-            Some(
-                DateTime::parse_from_rfc3339(&ends_at_str)
-                    .map_err(|e| format!("Failed to parse ends_at: {}", e))?
-                    .with_timezone(&Utc),
-            )
-        } else {
-            None
-        };
         
         // Parse voting method
         let voting_method = match voting_method_str.as_str() {
@@ -304,7 +289,7 @@ impl Database {
             Poll {
                 id: row.get("id"),
                 question: row.get("question"),
-                ends_at: row.get::<Option<String>, _>("ends_at").and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
+                ends_at: row.try_get::<Option<DateTime<Utc>>, _>("ends_at").ok().flatten(),
                 guild_id: guild_id.to_string(),
                 channel_id: String::new(),
                 creator_id: String::new(),
@@ -343,7 +328,7 @@ impl Database {
             Poll {
                 id: row.get("id"),
                 question: row.get("question"),
-                ends_at: row.get::<Option<String>, _>("ends_at").and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))),
+                ends_at: row.try_get::<Option<DateTime<Utc>>, _>("ends_at").ok().flatten(),
                 guild_id: guild_id.to_string(),
                 channel_id: String::new(),
                 creator_id: String::new(),
