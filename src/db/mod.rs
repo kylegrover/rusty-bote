@@ -1,22 +1,19 @@
-use sqlx::{Row, AnyPool, any::{AnyPoolOptions}};
-use sqlx::any::install_default_drivers;
+use sqlx::{Row, PgPool, postgres::{PgPoolOptions}};
 use chrono::{DateTime, Utc};
 use std::env;
 use crate::models::{Poll, VotingMethod};
 
 pub struct Database {
-    pool: AnyPool,
+    pool: PgPool,
 }
 
 impl Database {
     pub async fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Install drivers for all supported backends
-        install_default_drivers();
         // Get database URL from environment or use a default
-        let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:rusty_bote.db".to_string());
+        let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://postgres:password@localhost/rusty_bote_dev".to_string());
 
         // Connect to the database (let the backend create the DB if needed)
-        let pool = AnyPoolOptions::new()
+        let pool = PgPoolOptions::new()
             .max_connections(5)
             .connect(&db_url)
             .await?;
@@ -28,12 +25,12 @@ impl Database {
     }
     
     // Get a reference to the connection pool
-    pub fn pool(&self) -> &AnyPool {
+    pub fn pool(&self) -> &PgPool {
         &self.pool
     }
     
     // Initialize the database schema
-    async fn init_schema(pool: &AnyPool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn init_schema(pool: &PgPool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS polls (
@@ -43,9 +40,9 @@ impl Database {
                 creator_id TEXT NOT NULL,
                 question TEXT NOT NULL,
                 voting_method TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                ends_at TEXT,
-                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMPTZ NOT NULL,
+                ends_at TIMESTAMPTZ,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
                 message_id TEXT
             );
             "#,
@@ -57,10 +54,9 @@ impl Database {
             r#"
             CREATE TABLE IF NOT EXISTS poll_options (
                 id TEXT PRIMARY KEY,
-                poll_id TEXT NOT NULL,
+                poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
                 text TEXT NOT NULL,
-                position INTEGER NOT NULL,
-                FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
+                position INTEGER NOT NULL
             );
             "#,
         )
@@ -71,13 +67,11 @@ impl Database {
             r#"
             CREATE TABLE IF NOT EXISTS votes (
                 user_id TEXT NOT NULL,
-                poll_id TEXT NOT NULL,
-                option_id TEXT NOT NULL,
+                poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+                option_id TEXT NOT NULL REFERENCES poll_options(id) ON DELETE CASCADE,
                 rating INTEGER NOT NULL,
-                timestamp TEXT NOT NULL,
-                PRIMARY KEY (user_id, poll_id, option_id),
-                FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE,
-                FOREIGN KEY (option_id) REFERENCES poll_options(id) ON DELETE CASCADE
+                timestamp TIMESTAMPTZ NOT NULL,
+                PRIMARY KEY (user_id, poll_id, option_id)
             );
             "#,
         )
@@ -95,7 +89,7 @@ impl Database {
         sqlx::query(
             r#"
             INSERT INTO polls (id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
             "#,
         )
         .bind(&poll.id)
@@ -109,9 +103,9 @@ impl Database {
             crate::models::VotingMethod::Ranked => "ranked",
             crate::models::VotingMethod::Approval => "approval",
         })
-        .bind(poll.created_at.to_rfc3339())
-        .bind(poll.ends_at.map(|dt| dt.to_rfc3339()))
-        .bind(if poll.is_active { 1i64 } else { 0i64 })
+        .bind(poll.created_at)
+        .bind(poll.ends_at)
+        .bind(poll.is_active)
         .execute(&self.pool)
         .await?;
 
@@ -120,13 +114,13 @@ impl Database {
             sqlx::query(
                 r#"
                 INSERT INTO poll_options (id, poll_id, text, position)
-                VALUES (?, ?, ?, ?)
+                VALUES ($1, $2, $3, $4)
                 "#,
             )
             .bind(&option.id)
             .bind(&poll.id)
             .bind(&option.text)
-            .bind(i as i64)
+            .bind(i as i32)
             .execute(&self.pool)
             .await?;
         }
@@ -143,8 +137,8 @@ impl Database {
         sqlx::query(
             r#"
             UPDATE polls
-            SET message_id = ?
-            WHERE id = ?
+            SET message_id = $1
+            WHERE id = $2
             "#,
         )
         .bind(message_id)
@@ -164,7 +158,7 @@ impl Database {
             r#"
             SELECT id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id 
             FROM polls 
-            WHERE id = ?
+            WHERE id = $1
             "#,
         )
         .bind(poll_id)
@@ -212,7 +206,7 @@ impl Database {
             r#"
             SELECT id, text, position
             FROM poll_options
-            WHERE poll_id = ?
+            WHERE poll_id = $1
             ORDER BY position
             "#,
         )
@@ -252,14 +246,13 @@ impl Database {
         sqlx::query(
             r#"
             UPDATE polls
-            SET is_active = 0
-            WHERE id = ? AND is_active = 1
+            SET is_active = FALSE
+            WHERE id = $1 AND is_active = TRUE
             "#,
         )
         .bind(poll_id)
         .execute(&self.pool)
         .await?;
-        
         Ok(())
     }
 
@@ -272,10 +265,10 @@ impl Database {
             r#"
             SELECT id, channel_id, message_id
             FROM polls
-            WHERE ends_at IS NOT NULL AND ends_at < ? AND is_active = 1
+            WHERE ends_at IS NOT NULL AND ends_at < $1 AND is_active = TRUE
             "#,
         )
-        .bind(now.to_rfc3339())
+        .bind(now)
         .fetch_all(&self.pool)
         .await?
         .into_iter()
@@ -299,7 +292,7 @@ impl Database {
             r#"
             SELECT id, question, ends_at
             FROM polls
-            WHERE guild_id = ? AND is_active = 1
+            WHERE guild_id = $1 AND is_active = TRUE
             ORDER BY created_at DESC
             "#,
         )
@@ -336,9 +329,9 @@ impl Database {
             r#"
             SELECT id, question, ends_at
             FROM polls
-            WHERE guild_id = ? AND is_active = 0
+            WHERE guild_id = $1 AND is_active = FALSE
             ORDER BY ends_at DESC
-            LIMIT ?
+            LIMIT $2
             "#,
         )
         .bind(guild_id)
@@ -373,7 +366,7 @@ impl Database {
             r#"
             SELECT user_id, poll_id, option_id, rating, timestamp
             FROM votes
-            WHERE poll_id = ?
+            WHERE poll_id = $1
             "#,
         )
         .bind(poll_id)
@@ -385,12 +378,9 @@ impl Database {
             poll_id: row.get::<String, _>("poll_id"),
             option_id: row.get::<String, _>("option_id"),
             rating: row.get::<i32, _>("rating"),
-            timestamp: DateTime::parse_from_rfc3339(&row.get::<String, _>("timestamp"))
-                .unwrap()
-                .with_timezone(&Utc),
+            timestamp: row.get::<DateTime<Utc>, _>("timestamp"),
         })
         .collect();
-        
         Ok(votes)
     }
 
@@ -404,7 +394,7 @@ impl Database {
             r#"
             SELECT user_id, poll_id, option_id, rating, timestamp
             FROM votes
-            WHERE poll_id = ? AND user_id = ?
+            WHERE poll_id = $1 AND user_id = $2
             "#,
         )
         .bind(poll_id)
@@ -417,12 +407,9 @@ impl Database {
             poll_id: row.get::<String, _>("poll_id"),
             option_id: row.get::<String, _>("option_id"),
             rating: row.get::<i32, _>("rating"),
-            timestamp: DateTime::parse_from_rfc3339(&row.get::<String, _>("timestamp"))
-                .unwrap()
-                .with_timezone(&Utc),
+            timestamp: row.get::<DateTime<Utc>, _>("timestamp"),
         })
         .collect();
-        
         Ok(votes)
     }
 
@@ -432,7 +419,7 @@ impl Database {
         vote: &crate::models::Vote,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // First verify the poll and option exist
-        let poll_exists = sqlx::query("SELECT 1 FROM polls WHERE id = ?")
+        let poll_exists = sqlx::query("SELECT 1 FROM polls WHERE id = $1")
             .bind(&vote.poll_id)
             .fetch_optional(&self.pool)
             .await?
@@ -442,7 +429,7 @@ impl Database {
             return Err("Poll not found".into());
         }
 
-        let option_exists = sqlx::query("SELECT 1 FROM poll_options WHERE id = ? AND poll_id = ?")
+        let option_exists = sqlx::query("SELECT 1 FROM poll_options WHERE id = $1 AND poll_id = $2")
             .bind(&vote.option_id)
             .bind(&vote.poll_id)
             .fetch_optional(&self.pool)
@@ -456,16 +443,16 @@ impl Database {
         sqlx::query(
             r#"
             INSERT INTO votes (user_id, poll_id, option_id, rating, timestamp)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, poll_id, option_id) 
-            DO UPDATE SET rating = excluded.rating, timestamp = excluded.timestamp
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (user_id, poll_id, option_id) 
+            DO UPDATE SET rating = EXCLUDED.rating, timestamp = EXCLUDED.timestamp
             "#,
         )
         .bind(&vote.user_id)
         .bind(&vote.poll_id)
         .bind(&vote.option_id)
         .bind(vote.rating)
-        .bind(vote.timestamp.to_rfc3339())
+        .bind(vote.timestamp)
         .execute(&self.pool)
         .await?;
 
