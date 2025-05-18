@@ -21,7 +21,11 @@ log = "0.4"
 env_logger = "0.9"
 uuid = { version = "1.1", features = ["v4", "serde"] }
 thiserror = "1.0"
-
-# Add the following dependencies:
 regex = "1.5"
 lazy_static = "1.4"
+
+# Optional: Embedded Postgres for local dev
+postgresql_embedded = { version = "0.18", optional = true }
+
+[features]
+embedded-postgres = ["postgresql_embedded"]

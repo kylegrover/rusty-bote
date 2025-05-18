@@ -2,26 +2,61 @@ use sqlx::{Row, PgPool, postgres::{PgPoolOptions}};
 use chrono::{DateTime, Utc};
 use std::env;
 use crate::models::{Poll, VotingMethod};
+#[cfg(feature = "embedded-postgres")]
+use postgresql_embedded::{PostgreSQL};
 
 pub struct Database {
     pool: PgPool,
+    #[cfg(feature = "embedded-postgres")]
+    #[allow(dead_code)]
+    _embedded: Option<postgresql_embedded::PostgreSQL>,
 }
 
 impl Database {
     pub async fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Get database URL from environment or use a default
-        let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://postgres:password@localhost/rusty_bote_dev".to_string());
-
-        // Connect to the database (let the backend create the DB if needed)
+        let db_url = match env::var("DATABASE_URL") {
+            Ok(url) => url,
+            Err(_) => {
+                #[cfg(feature = "embedded-postgres")]
+                {
+                    let mut pg = PostgreSQL::default();
+                    pg.setup().await.map_err(|e| format!("Failed to setup embedded Postgres: {e}"))?;
+                    pg.start().await.map_err(|e| format!("Failed to start embedded Postgres: {e}"))?;
+                    let db_name = "rusty_bote_dev";
+                    pg.create_database(db_name).await.map_err(|e| format!("Failed to create database: {e}"))?;
+                    let settings = pg.settings();
+                    let url = format!(
+                        "postgres://{}:{}@{}:{}/{}",
+                        settings.username,
+                        settings.password,
+                        settings.host, 
+                        settings.port,
+                        db_name
+                    );
+                    println!("Using connection URL: {}", url);
+                    let pool = PgPoolOptions::new()
+                        .max_connections(5)
+                        .connect(&url)
+                        .await?;
+                    Self::init_schema(&pool).await?;
+                    return Ok(Self { pool, _embedded: Some(pg) });
+                }
+                #[cfg(not(feature = "embedded-postgres"))]
+                {
+                    panic!("DATABASE_URL must be set in production or run with the 'embedded-postgres' feature for local development.");
+                }
+            }
+        };
         let pool = PgPoolOptions::new()
             .max_connections(5)
             .connect(&db_url)
             .await?;
-
-        // Initialize schema
         Self::init_schema(&pool).await?;
-
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            #[cfg(feature = "embedded-postgres")]
+            _embedded: None,
+        })
     }
     
     // Get a reference to the connection pool
