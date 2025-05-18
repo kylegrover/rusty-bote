@@ -11,7 +11,7 @@ Rusty-Bote is a lightweight Discord bot written in Rust that allows server membe
   - Ranked choice voting  
   - Approval voting  
 - Interactive voting through Discord buttons and select menus  
-- Customizable poll duration  
+- Customizable poll duration (default: 24 hours, or manual close)  
 - Automatic or manual poll closing  
 - Clear results display  
 - Lightweight and efficient design  
@@ -21,15 +21,11 @@ Rusty-Bote is a lightweight Discord bot written in Rust that allows server membe
 ### Technology Stack
 - **Language**: Rust
 - **Discord API**: [Serenity](https://github.com/serenity-rs/serenity)
-- **Database**: SQLite for persistent storage
+- **Database**: PostgreSQL (with optional embedded Postgres for local development)
 - **ORM**: [SQLx](https://github.com/launchbadge/sqlx)
 
 ### Data Persistence
-The bot uses SQLite as its database solution, which provides:
-- Lightweight footprint
-- No separate database server required
-- Good performance for the expected workload
-- Simple backup and migration
+The bot uses PostgreSQL for data storage. For local development, you can use the `embedded-postgres` feature to run a temporary Postgres instance without external setup. In production, set the `DATABASE_URL` environment variable to point to your Postgres server.
 
 #### Database Schema
 - **polls**: Stores poll metadata, including ID, question, voting method, timestamps, and status
@@ -54,7 +50,7 @@ The bot uses SQLite as its database solution, which provides:
 3. Bot creates and posts the poll as an embed with interactive components
 
 ### Voting Process
-1. Server members click on buttons to cast votes
+1. Server members interact with buttons or select menus to cast votes
    - For STAR voting: Rate each option from 0-5 stars using select menus
    - For plurality voting: Select a single option
    - For ranked choice: Arrange options in order of preference
@@ -84,7 +80,7 @@ The `/poll help` subcommand provides a concise overview of Rusty-Bote. It summar
 - `question` - The poll question  
 - `options` - The available choices (minimum: 2, maximum: 10)  
 - `method` - Voting method (STAR, plurality, ranked choice, approval)  
-- `duration` - Duration of the poll in minutes (0 = manual close)  
+- `duration` - Duration of the poll in minutes (default: 1440 = 24 hours, 0 = manual close)  
 
 ## Development Roadmap
 
@@ -210,7 +206,8 @@ The codebase implements a multi-layered error handling approach:
 
 ## Implementation Notes
 - All voting methods are fully implemented with working interfaces
-- Database schema supports persistent storage across bot restarts
+- Database schema supports persistent storage across bot restarts (when using a real Postgres server; embedded Postgres is ephemeral by default)
 - The command system has comprehensive subcommand support
 - Advanced error handling with user feedback and detailed logging
 - Discord component limitations are handled with appropriate UI design patterns
+- For local development, use `cargo run --features embedded-postgres` to start the bot with an embedded Postgres instance (data is not persisted between runs). For production or persistent storage, set up a Postgres server and provide the connection string via the `DATABASE_URL` environment variable in your `.env` file.
