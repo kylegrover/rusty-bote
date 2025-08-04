@@ -258,7 +258,7 @@ impl Database {
             ends_at,
             is_active,
             message_id,
-            allowed_roles: row.try_get::<Option<String>, _>("allowed_roles").ok().and_then(|s| s.map(|v| v.split(',').map(|s| s.trim().to_string()).collect())),
+            allowed_roles: poll_row.try_get::<Option<String>, _>("allowed_roles").ok().and_then(|s| s.map(|v| v.split(',').map(|s| s.trim().to_string()).collect())),
         };
         
         Ok(poll)

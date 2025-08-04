@@ -125,94 +125,6 @@ pub async fn handle_poll_command(
         "list" => handle_list_polls(database, ctx, command).await?,
         "export" => handle_export_poll(database, ctx, command).await?,
         "help" => {
-// Export poll votes as CSV
-async fn handle_export_poll(
-    database: &Database,
-    ctx: &Context,
-    command: &ApplicationCommandInteraction,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let poll_id = match command
-        .data
-        .options
-        .first()
-        .and_then(|option| option.options.first())
-        .and_then(|option| option.value.as_ref())
-        .and_then(|value| value.as_str())
-    {
-        Some(id) => id.to_string(),
-        None => {
-            send_error_response(ctx, command, "No poll ID provided").await?;
-            return Ok(());
-        }
-    };
-
-    let poll = match database.get_poll(&poll_id).await {
-        Ok(p) => p,
-        Err(_) => {
-            send_error_response(ctx, command, "Poll not found").await?;
-            return Ok(());
-        }
-    };
-
-    if poll.is_active {
-        send_error_response(ctx, command, "Cannot export data for an active poll. End the poll first with `/poll end`.").await?;
-        return Ok(());
-    }
-
-    // Defer the response since we'll be generating a file
-    command
-        .create_interaction_response(&ctx.http, |response| {
-            response
-                .kind(InteractionResponseType::DeferredChannelMessageWithSource)
-                .interaction_response_data(|message| message.ephemeral(true))
-        })
-        .await?;
-
-    let votes = database.get_poll_votes(&poll_id).await?;
-    
-    // Generate CSV content
-    let mut csv_content = String::new();
-    csv_content.push_str("User ID,Option ID,Option Text,Rating,Timestamp\n");
-    
-    for vote in &votes {
-        let option_text = poll.options.iter()
-            .find(|opt| opt.id == vote.option_id)
-            .map(|opt| opt.text.clone())
-            .unwrap_or_else(|| "Unknown Option".to_string());
-        
-        // Escape CSV values that contain commas or quotes
-        let escaped_text = if option_text.contains(',') || option_text.contains('"') {
-            format!("\"{}\"", option_text.replace('"', "\"\""))
-        } else {
-            option_text
-        };
-        
-        csv_content.push_str(&format!(
-            "{},{},{},{},{}\n",
-            vote.user_id,
-            vote.option_id,
-            escaped_text,
-            vote.rating,
-            vote.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
-        ));
-    }
-
-    let filename = format!("poll_{}_{}_votes.csv", 
-        poll_id, 
-        poll.created_at.format("%Y%m%d_%H%M%S")
-    );
-
-    // Send the CSV as a file attachment
-    command
-        .edit_original_interaction_response(&ctx.http, |response| {
-            response
-                .content(format!("Exported {} votes from poll: \"{}\"", votes.len(), poll.question))
-                .add_file((csv_content.as_bytes(), filename.as_str()))
-        })
-        .await?;
-
-    Ok(())
-}
             command.create_interaction_response(&ctx.http, |resp| {
                 resp.kind(serenity::model::application::interaction::InteractionResponseType::ChannelMessageWithSource)
                     .interaction_response_data(|msg| {
@@ -677,6 +589,93 @@ fn create_results_embed<'a>(
         .field("Details", &summary_display, false) // Use the potentially truncated summary
         .footer(|f| f.text(format!("Poll ID: {}", poll.id)))
         .timestamp(Utc::now().to_rfc3339())
+}
+
+// Export poll votes as CSV
+async fn handle_export_poll(
+    database: &Database,
+    ctx: &Context,
+    command: &ApplicationCommandInteraction,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let poll_id = match command
+        .data
+        .options
+        .first()
+        .and_then(|option| option.options.first())
+        .and_then(|option| option.value.as_ref())
+        .and_then(|value| value.as_str())
+    {
+        Some(id) => id.to_string(),
+        None => {
+            send_error_response(ctx, command, "No poll ID provided").await?;
+            return Ok(());
+        }
+    };
+
+    let poll = match database.get_poll(&poll_id).await {
+        Ok(p) => p,
+        Err(_) => {
+            send_error_response(ctx, command, "Poll not found").await?;
+            return Ok(());
+        }
+    };
+
+    if poll.is_active {
+        send_error_response(ctx, command, "Cannot export data for an active poll. End the poll first with `/poll end`.").await?;
+        return Ok(());
+    }
+
+    let votes = database.get_poll_votes(&poll_id).await?;
+    
+    // Generate CSV content
+    let mut csv_content = String::new();
+    csv_content.push_str("User ID,Option ID,Option Text,Rating,Timestamp\n");
+    
+    for vote in &votes {
+        let option_text = poll.options.iter()
+            .find(|opt| opt.id == vote.option_id)
+            .map(|opt| opt.text.clone())
+            .unwrap_or_else(|| "Unknown Option".to_string());
+        
+        // Escape CSV values that contain commas or quotes
+        let escaped_text = if option_text.contains(',') || option_text.contains('"') {
+            format!("\"{}\"", option_text.replace('"', "\"\""))
+        } else {
+            option_text
+        };
+        
+        csv_content.push_str(&format!(
+            "{},{},{},{},{}\n",
+            vote.user_id,
+            vote.option_id,
+            escaped_text,
+            vote.rating,
+            vote.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+        ));
+    }
+
+    // Send the CSV content as text since file attachments aren't supported in responses
+    command
+        .create_interaction_response(&ctx.http, |response| {
+            response
+                .kind(InteractionResponseType::ChannelMessageWithSource)
+                .interaction_response_data(|message| {
+                    message
+                        .ephemeral(true)
+                        .content(format!("**Exported {} votes from poll: \"{}\"**\n\n```csv\n{}\n```", 
+                            votes.len(), 
+                            poll.question,
+                            if csv_content.len() > 1800 { 
+                                format!("{}...\n(CSV truncated - too many votes to display)", &csv_content[..1800])
+                            } else { 
+                                csv_content 
+                            }
+                        ))
+                })
+        })
+        .await?;
+
+    Ok(())
 }
 
 async fn send_error_response(
