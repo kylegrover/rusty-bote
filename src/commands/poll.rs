@@ -91,6 +91,19 @@ pub fn create_poll_command(command: &mut CreateApplicationCommand) -> &mut Creat
                 .description("Show help information")
                 .kind(serenity::model::application::command::CommandOptionType::SubCommand)
         })
+        .create_option(|option| {
+            option
+                .name("export")
+                .description("Export vote data for a completed poll as CSV")
+                .kind(serenity::model::application::command::CommandOptionType::SubCommand)
+                .create_sub_option(|sub_option| {
+                    sub_option
+                        .name("poll_id")
+                        .description("ID of the poll to export")
+                        .kind(serenity::model::application::command::CommandOptionType::String)
+                        .required(true)
+                })
+        })
 }
 
 pub async fn handle_poll_command(
@@ -110,7 +123,96 @@ pub async fn handle_poll_command(
         "create" => handle_create_poll(database, ctx, command).await?,
         "end" => handle_end_poll(database, ctx, command).await?,
         "list" => handle_list_polls(database, ctx, command).await?,
+        "export" => handle_export_poll(database, ctx, command).await?,
         "help" => {
+// Export poll votes as CSV
+async fn handle_export_poll(
+    database: &Database,
+    ctx: &Context,
+    command: &ApplicationCommandInteraction,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let poll_id = match command
+        .data
+        .options
+        .first()
+        .and_then(|option| option.options.first())
+        .and_then(|option| option.value.as_ref())
+        .and_then(|value| value.as_str())
+    {
+        Some(id) => id.to_string(),
+        None => {
+            send_error_response(ctx, command, "No poll ID provided").await?;
+            return Ok(());
+        }
+    };
+
+    let poll = match database.get_poll(&poll_id).await {
+        Ok(p) => p,
+        Err(_) => {
+            send_error_response(ctx, command, "Poll not found").await?;
+            return Ok(());
+        }
+    };
+
+    if poll.is_active {
+        send_error_response(ctx, command, "Cannot export data for an active poll. End the poll first with `/poll end`.").await?;
+        return Ok(());
+    }
+
+    // Defer the response since we'll be generating a file
+    command
+        .create_interaction_response(&ctx.http, |response| {
+            response
+                .kind(InteractionResponseType::DeferredChannelMessageWithSource)
+                .interaction_response_data(|message| message.ephemeral(true))
+        })
+        .await?;
+
+    let votes = database.get_poll_votes(&poll_id).await?;
+    
+    // Generate CSV content
+    let mut csv_content = String::new();
+    csv_content.push_str("User ID,Option ID,Option Text,Rating,Timestamp\n");
+    
+    for vote in &votes {
+        let option_text = poll.options.iter()
+            .find(|opt| opt.id == vote.option_id)
+            .map(|opt| opt.text.clone())
+            .unwrap_or_else(|| "Unknown Option".to_string());
+        
+        // Escape CSV values that contain commas or quotes
+        let escaped_text = if option_text.contains(',') || option_text.contains('"') {
+            format!("\"{}\"", option_text.replace('"', "\"\""))
+        } else {
+            option_text
+        };
+        
+        csv_content.push_str(&format!(
+            "{},{},{},{},{}\n",
+            vote.user_id,
+            vote.option_id,
+            escaped_text,
+            vote.rating,
+            vote.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+        ));
+    }
+
+    let filename = format!("poll_{}_{}_votes.csv", 
+        poll_id, 
+        poll.created_at.format("%Y%m%d_%H%M%S")
+    );
+
+    // Send the CSV as a file attachment
+    command
+        .edit_original_interaction_response(&ctx.http, |response| {
+            response
+                .content(format!("Exported {} votes from poll: \"{}\"", votes.len(), poll.question))
+                .add_file((csv_content.as_bytes(), filename.as_str()))
+        })
+        .await?;
+
+    Ok(())
+}
             command.create_interaction_response(&ctx.http, |resp| {
                 resp.kind(serenity::model::application::interaction::InteractionResponseType::ChannelMessageWithSource)
                     .interaction_response_data(|msg| {
@@ -119,7 +221,8 @@ pub async fn handle_poll_command(
                                 .description("Welcome to Rusty-Bote! I'm here to help your server make better decisions through various voting methods.")
                                 .field("📝 Creating Polls", 
                                     "Use `/poll create` with a question, comma-separated options, and your preferred voting method.\n\
-                                    For longer polls, set the duration in minutes (use 0 for manual closing).", 
+                                    For longer polls, set the duration in minutes (use 0 for manual closing).\n\
+                                    Optionally restrict voting to a specific role.", 
                                     false)
                                 .field("🗳️ Voting Methods", 
                                     "**STAR Voting**: Rate each option 0-5 stars. Combines scoring and an automatic runoff between top choices.\n\
@@ -130,6 +233,7 @@ pub async fn handle_poll_command(
                                 .field("⚙️ Managing Polls", 
                                     "• End active polls with `/poll end [poll-id]`\n\
                                     • See all server polls with `/poll list`\n\
+                                    • Export vote data with `/poll export [poll-id]` (for completed polls)\n\
                                     • Poll IDs are shown in poll embeds for reference", 
                                     false)
                                 .field("💡 Tips", 

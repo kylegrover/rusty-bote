@@ -122,10 +122,13 @@ impl Database {
         &self,
         poll: &crate::models::Poll,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let allowed_roles_str = poll.allowed_roles.as_ref()
+            .map(|roles| roles.join(","));
+            
         sqlx::query(
             r#"
-            INSERT INTO polls (id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
+            INSERT INTO polls (id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id, allowed_roles)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, $10)
             "#,
         )
         .bind(&poll.id)
@@ -142,6 +145,7 @@ impl Database {
         .bind(poll.created_at)
         .bind(poll.ends_at)
         .bind(poll.is_active)
+        .bind(allowed_roles_str)
         .execute(&self.pool)
         .await?;
 
@@ -192,7 +196,7 @@ impl Database {
         // Get the poll
         let poll_row = sqlx::query(
             r#"
-            SELECT id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id 
+            SELECT id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id, allowed_roles 
             FROM polls 
             WHERE id = $1
             "#,
