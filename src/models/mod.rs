@@ -16,6 +16,7 @@ pub struct Poll {
     pub ends_at: Option<DateTime<Utc>>,
     pub is_active: bool,
     pub message_id: Option<String>, // Added message_id
+    pub allowed_roles: Option<Vec<String>>, // Restrict voting to these role IDs (if set)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +62,7 @@ impl Poll {
         options_text: Vec<String>,
         voting_method: VotingMethod,
         duration_minutes: Option<i64>,
+        allowed_roles: Option<Vec<String>>,
     ) -> Self {
         let options = options_text
             .into_iter()
@@ -91,6 +93,7 @@ impl Poll {
             ends_at,
             is_active: true,
             message_id: None, // Initialize message_id as None
+            allowed_roles,
         }
     }
 }

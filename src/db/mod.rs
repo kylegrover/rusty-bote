@@ -78,7 +78,8 @@ impl Database {
                 created_at TIMESTAMPTZ NOT NULL,
                 ends_at TIMESTAMPTZ,
                 is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                message_id TEXT
+                message_id TEXT,
+                allowed_roles TEXT
             );
             "#,
         )
@@ -253,6 +254,7 @@ impl Database {
             ends_at,
             is_active,
             message_id,
+            allowed_roles: row.try_get::<Option<String>, _>("allowed_roles").ok().and_then(|s| s.map(|v| v.split(',').map(|s| s.trim().to_string()).collect())),
         };
         
         Ok(poll)
@@ -333,6 +335,7 @@ impl Database {
                 created_at: Utc::now(),
                 is_active: true,
                 message_id: None,
+                allowed_roles: None,
             }
         }).collect();
 
@@ -372,6 +375,7 @@ impl Database {
                 created_at: Utc::now(),
                 is_active: false,
                 message_id: None,
+                allowed_roles: None,
             }
         }).collect();
         Ok(partial_polls)

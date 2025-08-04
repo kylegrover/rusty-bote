@@ -17,7 +17,32 @@ pub async fn handle_vote_button(
     // Add log message to show which custom_id was used for debugging
     info!("Processing vote button interaction with custom_id: {}", component.data.custom_id);
 
+
     let user_id = component.user.id.to_string();
+    // Role restriction enforcement
+    if let Some(allowed_roles) = &poll.allowed_roles {
+        if let Some(member) = &component.member {
+            let has_role = member.roles.iter().any(|role_id| allowed_roles.contains(&role_id.to_string()));
+            if !has_role {
+                component.create_interaction_response(&ctx.http, |response| {
+                    response.kind(InteractionResponseType::ChannelMessageWithSource)
+                        .interaction_response_data(|msg| {
+                            msg.ephemeral(true).content("You do not have permission to vote in this poll. Only members with the specified role can vote.")
+                        })
+                }).await?;
+                return Ok(());
+            }
+        } else {
+            component.create_interaction_response(&ctx.http, |response| {
+                response.kind(InteractionResponseType::ChannelMessageWithSource)
+                    .interaction_response_data(|msg| {
+                        msg.ephemeral(true).content("Unable to verify your roles. Please try again or contact an admin.")
+                    })
+            }).await?;
+            return Ok(());
+        }
+    }
+
     let existing_votes = database.get_user_poll_votes(&poll.id, &user_id).await?;
     let mut option_ratings = std::collections::HashMap::<String, i32>::new();
     for vote in &existing_votes {

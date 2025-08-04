@@ -51,6 +51,13 @@ pub fn create_poll_command(command: &mut CreateApplicationCommand) -> &mut Creat
                         .kind(serenity::model::application::command::CommandOptionType::Integer)
                         .required(false)
                 })
+                .create_sub_option(|sub_option| {
+                    sub_option
+                        .name("allowed_role")
+                        .description("Restrict voting to members with this role (optional)")
+                        .kind(serenity::model::application::command::CommandOptionType::Role)
+                        .required(false)
+                })
                 // .create_sub_option(|sub_option| {
                 //     sub_option
                 //         .name("anonymous")
@@ -161,6 +168,7 @@ async fn handle_create_poll(
     let mut options_str = String::new();
     let mut method_str = String::new();
     let mut duration: Option<i64> = None;
+    let mut allowed_roles: Option<Vec<String>> = None;
     // let mut anonymous = true;
 
     for option in options {
@@ -179,11 +187,14 @@ async fn handle_create_poll(
                     duration = Some(value.as_i64().unwrap_or(1440));
                 }
             }
-            // "anonymous" => {
-            //     if let Some(value) = option.value.as_ref() {
-            //         anonymous = value.as_bool().unwrap_or(true);
-            //     }
-            // }
+            "allowed_role" => {
+                if let Some(value) = option.value.as_ref() {
+                    let role_id = value.as_str().unwrap_or("").to_string();
+                    if !role_id.is_empty() {
+                        allowed_roles = Some(vec![role_id]);
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -227,6 +238,7 @@ async fn handle_create_poll(
         options_vec,
         voting_method.clone(),
         duration,
+        allowed_roles,
     );
 
     database.create_poll(&poll).await?;
@@ -293,14 +305,20 @@ fn create_poll_embed<'a>(embed: &'a mut CreateEmbed, poll: &Poll) -> &'a mut Cre
         .collect::<Vec<String>>()
         .join("\n");
 
-    embed
+    let mut embed = embed
         .title(&poll.question)
         .description(format!("**Options:**\n{}", options_list))
         .field("Voting Method", method_name, true)
         .field("Poll ID", &poll.id, true)
-        .field("Ends", ends_at_str, true)
-        .footer(|f| f.text("Click the buttons below to vote!"))
-        .timestamp(poll.created_at.to_rfc3339())
+        .field("Ends", ends_at_str, true);
+
+    if let Some(roles) = &poll.allowed_roles {
+        if let Some(role_id) = roles.get(0) {
+            embed = embed.field("Who Can Vote", format!("<@&{}> only", role_id), false);
+        }
+    }
+
+    embed.footer(|f| f.text("Click the buttons below to vote!")).timestamp(poll.created_at.to_rfc3339())
 }
 
 // Using camelCase format for consistency
