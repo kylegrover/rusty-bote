@@ -74,9 +74,9 @@ pub async fn handle_vote_button(
             
             let options_to_show = &poll.options[start_idx..end_idx];
             let pagination_info = if total_pages > 1 {
-                format!("\nPage {} of {} - Rate each option from 1-5 stars", page + 1, total_pages)
+                format!("\nPage {} of {} - Rate each option from 0-5 stars", page + 1, total_pages)
             } else {
-                String::from("\nRate each option from 1-5 stars")
+                String::from("\nRate each option from 0-5 stars")
             };
 
             component
@@ -375,9 +375,9 @@ pub async fn handle_star_vote(
     
     let options_to_show = &poll.options[start_idx..end_idx];
     let pagination_info = if total_pages > 1 {
-        format!("\nPage {} of {} - Rate each option from 1-5 stars", current_page + 1, total_pages)
+        format!("\nPage {} of {} - Rate each option from 0-5 stars", current_page + 1, total_pages)
     } else {
-        String::from("\nRate each option from 1-5 stars")
+        String::from("\nRate each option from 0-5 stars")
     };
 
     let existing_votes = database.get_user_poll_votes(&poll.id, &component.user.id.to_string()).await?;
