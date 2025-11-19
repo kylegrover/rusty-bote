@@ -81,6 +81,19 @@ pub fn create_poll_command(command: &mut CreateApplicationCommand) -> &mut Creat
         })
         .create_option(|option| {
             option
+                .name("results")
+                .description("Show results for an ended poll")
+                .kind(serenity::model::application::command::CommandOptionType::SubCommand)
+                .create_sub_option(|sub_option| {
+                    sub_option
+                        .name("poll_id")
+                        .description("ID of the poll to show results for")
+                        .kind(serenity::model::application::command::CommandOptionType::String)
+                        .required(true)
+                })
+        })
+        .create_option(|option| {
+            option
                 .name("list")
                 .description("List active and recently ended polls in this server")
                 .kind(serenity::model::application::command::CommandOptionType::SubCommand)
@@ -122,6 +135,7 @@ pub async fn handle_poll_command(
     match subcommand_name {
         "create" => handle_create_poll(database, ctx, command).await?,
         "end" => handle_end_poll(database, ctx, command).await?,
+        "results" => handle_poll_results(database, ctx, command).await?,
         "list" => handle_list_polls(database, ctx, command).await?,
         "export" => handle_export_poll(database, ctx, command).await?,
         "help" => {
@@ -145,6 +159,7 @@ pub async fn handle_poll_command(
                                 .field("⚙️ Managing Polls", 
                                     "• End active polls with `/poll end [poll-id]`\n\
                                     • See all server polls with `/poll list`\n\
+                                    • See results of ended polls with `/poll results [poll-id]`\n\
                                     • Export vote data with `/poll export [poll-id]` (for completed polls)\n\
                                     • Poll IDs are shown in poll embeds for reference", 
                                     false)
@@ -297,6 +312,63 @@ async fn handle_create_poll(
             poll.id, e
         );
     }
+
+    Ok(())
+}
+
+async fn handle_poll_results(
+    database: &Database,
+    ctx: &Context,
+    command: &ApplicationCommandInteraction,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let poll_id = match command
+        .data
+        .options
+        .first()
+        .and_then(|option| option.options.first())
+        .and_then(|option| option.value.as_ref())
+        .and_then(|value| value.as_str())
+    {
+        Some(id) => id.to_string(),
+        None => {
+            send_error_response(ctx, command, "No poll ID provided").await?;
+            return Ok(());
+        }
+    };
+
+    let poll = match database.get_poll(&poll_id).await {
+        Ok(p) => p,
+        Err(_) => {
+            send_error_response(ctx, command, "Poll not found").await?;
+            return Ok(());
+        }
+    };
+
+    if poll.is_active {
+        let ends_at_msg = match poll.ends_at {
+            Some(time) => format!("<t:{}:R>", time.timestamp()),
+            None => "manually ended".to_string(),
+        };
+        
+        let msg = format!("Poll is still active. Wait until {} or use `/poll end {}` to end the polling early.", ends_at_msg, poll_id);
+        send_error_response(ctx, command, &msg).await?;
+        return Ok(());
+    }
+
+    let votes = database.get_poll_votes(&poll_id).await?;
+    let results = calculate_poll_results(&poll, &votes);
+
+    command
+        .create_interaction_response(&ctx.http, |response| {
+            response
+                .kind(InteractionResponseType::ChannelMessageWithSource)
+                .interaction_response_data(|message| {
+                    message
+                        .ephemeral(true)
+                        .embed(|e| create_results_embed(e, &poll, &results))
+                })
+        })
+        .await?;
 
     Ok(())
 }
@@ -463,7 +535,31 @@ async fn handle_end_poll(
     };
 
     if !poll.is_active {
-        send_error_response(ctx, command, "This poll has already ended").await?;
+        let votes = database.get_poll_votes(&poll_id).await?;
+        let results = calculate_poll_results(&poll, &votes);
+        
+        let msg = if let Some(ends_at) = poll.ends_at {
+            if ends_at < Utc::now() {
+                format!("This poll has already ended at <t:{}:f>, here are the results:", ends_at.timestamp())
+            } else {
+                "This poll has already ended, here are the results:".to_string()
+            }
+        } else {
+            "This poll has already ended, here are the results:".to_string()
+        };
+
+        command
+            .create_interaction_response(&ctx.http, |response| {
+                response
+                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                    .interaction_response_data(|message| {
+                        message
+                            .ephemeral(true)
+                            .content(msg)
+                            .embed(|e| create_results_embed(e, &poll, &results))
+                    })
+            })
+            .await?;
         return Ok(());
     }
 
