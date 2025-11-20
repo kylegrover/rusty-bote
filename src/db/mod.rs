@@ -79,7 +79,7 @@ impl Database {
                 ends_at TIMESTAMPTZ,
                 is_active BOOLEAN NOT NULL DEFAULT TRUE,
                 message_id TEXT,
-                allowed_roles TEXT
+                allowed_roles TEXT[]
             );
             "#,
         )
@@ -122,9 +122,6 @@ impl Database {
         &self,
         poll: &crate::models::Poll,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let allowed_roles_str = poll.allowed_roles.as_ref()
-            .map(|roles| roles.join(","));
-            
         sqlx::query(
             r#"
             INSERT INTO polls (id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id, allowed_roles)
@@ -145,7 +142,7 @@ impl Database {
         .bind(poll.created_at)
         .bind(poll.ends_at)
         .bind(poll.is_active)
-        .bind(allowed_roles_str)
+        .bind(&poll.allowed_roles)
         .execute(&self.pool)
         .await?;
 
@@ -258,7 +255,7 @@ impl Database {
             ends_at,
             is_active,
             message_id,
-            allowed_roles: poll_row.try_get::<Option<String>, _>("allowed_roles").ok().and_then(|s| s.map(|v| v.split(',').map(|s| s.trim().to_string()).collect())),
+            allowed_roles: poll_row.try_get::<Option<Vec<String>>, _>("allowed_roles").unwrap_or(None),
         };
         
         Ok(poll)
