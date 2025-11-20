@@ -601,8 +601,7 @@ pub async fn handle_approval_vote_toggle(
 }
 
 pub fn format_user_vote(poll: &Poll, user_votes: &[crate::models::Vote]) -> String {
-    let mut vote_summary = format!("**{}**\n{} Voting\n\nYour vote has been recorded:\n", 
-        poll.question, poll.voting_method);
+    let mut vote_summary = String::new();
 
     match poll.voting_method {
         crate::models::VotingMethod::Star => {
@@ -613,14 +612,18 @@ pub fn format_user_vote(poll: &Poll, user_votes: &[crate::models::Vote]) -> Stri
             for option in &poll.options {
                 let rating = vote_map.get(&option.id).cloned().unwrap_or(0);
                 let stars = "⭐".repeat(rating as usize);
-                vote_summary.push_str(&format!("{}: {}\n", option.text, stars));
+                vote_summary.push_str(&format!("• **{}**: {}\n", option.text, stars));
             }
         },
         crate::models::VotingMethod::Plurality => {
             for option in &poll.options {
                 let selected = user_votes.iter().any(|v| v.option_id == option.id && v.rating > 0);
                 let symbol = if selected { "✓" } else { " " };
-                vote_summary.push_str(&format!("{}: {}\n", option.text, symbol));
+                if selected {
+                    vote_summary.push_str(&format!("• **{}**: {}\n", option.text, symbol));
+                } else {
+                    vote_summary.push_str(&format!("• {}: {}\n", option.text, symbol));
+                }
             }
         },
         crate::models::VotingMethod::Approval => {
@@ -631,7 +634,7 @@ pub fn format_user_vote(poll: &Poll, user_votes: &[crate::models::Vote]) -> Stri
             for option in &poll.options {
                 let approved = vote_map.get(&option.id).copied().unwrap_or(0) == 1;
                 let symbol = if approved { "✅" } else { "❌" };
-                vote_summary.push_str(&format!("{}: {}\n", option.text, symbol));
+                vote_summary.push_str(&format!("• **{}**: {}\n", option.text, symbol));
             }
         },
         crate::models::VotingMethod::Ranked => {
@@ -659,9 +662,9 @@ pub fn format_user_vote(poll: &Poll, user_votes: &[crate::models::Vote]) -> Stri
             for option in &ranked_options {
                 let rank = rankings.get(&option.id).cloned().unwrap_or(0);
                 if rank > 0 {
-                    vote_summary.push_str(&format!("#{}: {}\n", rank, option.text));
+                    vote_summary.push_str(&format!("• **#{}**: {}\n", rank, option.text));
                 } else {
-                    vote_summary.push_str(&format!("Unranked: {}\n", option.text));
+                    vote_summary.push_str(&format!("• Unranked: {}\n", option.text));
                 }
             }
         }
@@ -680,7 +683,9 @@ pub async fn handle_done_voting(
     let user_id = component.user.id.to_string();
     let user_votes = database.get_user_poll_votes(poll_id, &user_id).await?;
 
-    let vote_summary = format_user_vote(poll, &user_votes);
+    let vote_details = format_user_vote(poll, &user_votes);
+    let vote_summary = format!("**{}**\n{} Voting\n\nYour vote has been recorded:\n{}", 
+        poll.question, poll.voting_method, vote_details);
     
     component
         .create_interaction_response(&ctx.http, |response| {

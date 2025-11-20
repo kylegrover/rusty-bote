@@ -191,9 +191,9 @@ pub async fn handle_component(
         return Ok(());
     };
 
-    // If poll is found but inactive, disallow all interactions
+    // If poll is found but inactive, disallow all interactions except sharing results/votes
     if let Some(ref p) = poll {
-        if !p.is_active {
+        if !p.is_active && !custom_id.starts_with("shareResults_") && !custom_id.starts_with("shareVote_") {
             component.create_interaction_response(&ctx.http, |response| {
                 response
                     .kind(InteractionResponseType::ChannelMessageWithSource)
@@ -346,11 +346,15 @@ pub async fn handle_component(
     } else if custom_id.starts_with("shareVote_") {
         if let Some(p) = poll {
             let user_votes = database.get_user_poll_votes(&p.id, &component.user.id.to_string()).await?;
-            let vote_summary = vote::format_user_vote(&p, &user_votes);
+            let vote_details = vote::format_user_vote(&p, &user_votes);
             
             // Send public message
             component.channel_id.send_message(&ctx.http, |m| {
-                m.content(format!("<@{}> shared their vote:\n{}", component.user.id, vote_summary))
+                m.embed(|e| {
+                    e.title(format!("🗳️ Vote Shared: {}", p.question))
+                     .description(format!("**User**: <@{}>\n**Method**: {}\n\n{}", component.user.id, p.voting_method, vote_details))
+                     .color((0, 255, 0)) // Green
+                })
             }).await?;
 
             // Update ephemeral message to disable button
