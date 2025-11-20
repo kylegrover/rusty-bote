@@ -51,6 +51,13 @@ pub fn create_poll_command(command: &mut CreateApplicationCommand) -> &mut Creat
                         .kind(serenity::model::application::command::CommandOptionType::Integer)
                         .required(false)
                 })
+                .create_sub_option(|sub_option| {
+                    sub_option
+                        .name("allowed_role")
+                        .description("Restrict voting to members with this role (optional)")
+                        .kind(serenity::model::application::command::CommandOptionType::Role)
+                        .required(false)
+                })
                 // .create_sub_option(|sub_option| {
                 //     sub_option
                 //         .name("anonymous")
@@ -74,6 +81,19 @@ pub fn create_poll_command(command: &mut CreateApplicationCommand) -> &mut Creat
         })
         .create_option(|option| {
             option
+                .name("results")
+                .description("Show results for an ended poll")
+                .kind(serenity::model::application::command::CommandOptionType::SubCommand)
+                .create_sub_option(|sub_option| {
+                    sub_option
+                        .name("poll_id")
+                        .description("ID of the poll to show results for")
+                        .kind(serenity::model::application::command::CommandOptionType::String)
+                        .required(true)
+                })
+        })
+        .create_option(|option| {
+            option
                 .name("list")
                 .description("List active and recently ended polls in this server")
                 .kind(serenity::model::application::command::CommandOptionType::SubCommand)
@@ -83,6 +103,19 @@ pub fn create_poll_command(command: &mut CreateApplicationCommand) -> &mut Creat
                 .name("help")
                 .description("Show help information")
                 .kind(serenity::model::application::command::CommandOptionType::SubCommand)
+        })
+        .create_option(|option| {
+            option
+                .name("export")
+                .description("Export vote data for a completed poll as CSV")
+                .kind(serenity::model::application::command::CommandOptionType::SubCommand)
+                .create_sub_option(|sub_option| {
+                    sub_option
+                        .name("poll_id")
+                        .description("ID of the poll to export")
+                        .kind(serenity::model::application::command::CommandOptionType::String)
+                        .required(true)
+                })
         })
 }
 
@@ -102,7 +135,9 @@ pub async fn handle_poll_command(
     match subcommand_name {
         "create" => handle_create_poll(database, ctx, command).await?,
         "end" => handle_end_poll(database, ctx, command).await?,
+        "results" => handle_poll_results(database, ctx, command).await?,
         "list" => handle_list_polls(database, ctx, command).await?,
+        "export" => handle_export_poll(database, ctx, command).await?,
         "help" => {
             command.create_interaction_response(&ctx.http, |resp| {
                 resp.kind(serenity::model::application::interaction::InteractionResponseType::ChannelMessageWithSource)
@@ -112,7 +147,8 @@ pub async fn handle_poll_command(
                                 .description("Welcome to Rusty-Bote! I'm here to help your server make better decisions through various voting methods.")
                                 .field("📝 Creating Polls", 
                                     "Use `/poll create` with a question, comma-separated options, and your preferred voting method.\n\
-                                    For longer polls, set the duration in minutes (use 0 for manual closing).", 
+                                    For longer polls, set the duration in minutes (use 0 for manual closing).\n\
+                                    Optionally restrict voting to a specific role.", 
                                     false)
                                 .field("🗳️ Voting Methods", 
                                     "**STAR Voting**: Rate each option 0-5 stars. Combines scoring and an automatic runoff between top choices.\n\
@@ -123,6 +159,8 @@ pub async fn handle_poll_command(
                                 .field("⚙️ Managing Polls", 
                                     "• End active polls with `/poll end [poll-id]`\n\
                                     • See all server polls with `/poll list`\n\
+                                    • See results of ended polls with `/poll results [poll-id]`\n\
+                                    • Export vote data with `/poll export [poll-id]` (for completed polls)\n\
                                     • Poll IDs are shown in poll embeds for reference", 
                                     false)
                                 .field("💡 Tips", 
@@ -161,6 +199,7 @@ async fn handle_create_poll(
     let mut options_str = String::new();
     let mut method_str = String::new();
     let mut duration: Option<i64> = None;
+    let mut allowed_roles: Option<Vec<String>> = None;
     // let mut anonymous = true;
 
     for option in options {
@@ -179,11 +218,14 @@ async fn handle_create_poll(
                     duration = Some(value.as_i64().unwrap_or(1440));
                 }
             }
-            // "anonymous" => {
-            //     if let Some(value) = option.value.as_ref() {
-            //         anonymous = value.as_bool().unwrap_or(true);
-            //     }
-            // }
+            "allowed_role" => {
+                if let Some(value) = option.value.as_ref() {
+                    let role_id = value.as_str().unwrap_or("").to_string();
+                    if !role_id.is_empty() {
+                        allowed_roles = Some(vec![role_id]);
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -227,6 +269,7 @@ async fn handle_create_poll(
         options_vec,
         voting_method.clone(),
         duration,
+        allowed_roles,
     );
 
     database.create_poll(&poll).await?;
@@ -273,6 +316,63 @@ async fn handle_create_poll(
     Ok(())
 }
 
+async fn handle_poll_results(
+    database: &Database,
+    ctx: &Context,
+    command: &ApplicationCommandInteraction,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let poll_id = match command
+        .data
+        .options
+        .first()
+        .and_then(|option| option.options.first())
+        .and_then(|option| option.value.as_ref())
+        .and_then(|value| value.as_str())
+    {
+        Some(id) => id.to_string(),
+        None => {
+            send_error_response(ctx, command, "No poll ID provided").await?;
+            return Ok(());
+        }
+    };
+
+    let poll = match database.get_poll(&poll_id).await {
+        Ok(p) => p,
+        Err(_) => {
+            send_error_response(ctx, command, "Poll not found").await?;
+            return Ok(());
+        }
+    };
+
+    if poll.is_active {
+        let ends_at_msg = match poll.ends_at {
+            Some(time) => format!("<t:{}:R>", time.timestamp()),
+            None => "manually ended".to_string(),
+        };
+        
+        let msg = format!("Poll is still active. Wait until {} or use `/poll end {}` to end the polling early.", ends_at_msg, poll_id);
+        send_error_response(ctx, command, &msg).await?;
+        return Ok(());
+    }
+
+    let votes = database.get_poll_votes(&poll_id).await?;
+    let results = calculate_poll_results(&poll, &votes);
+
+    command
+        .create_interaction_response(&ctx.http, |response| {
+            response
+                .kind(InteractionResponseType::ChannelMessageWithSource)
+                .interaction_response_data(|message| {
+                    message
+                        .ephemeral(true)
+                        .embed(|e| create_results_embed(e, &poll, &results))
+                })
+        })
+        .await?;
+
+    Ok(())
+}
+
 fn create_poll_embed<'a>(embed: &'a mut CreateEmbed, poll: &Poll) -> &'a mut CreateEmbed {
     let method_name = match poll.voting_method {
         VotingMethod::Star => "STAR Voting",
@@ -293,14 +393,20 @@ fn create_poll_embed<'a>(embed: &'a mut CreateEmbed, poll: &Poll) -> &'a mut Cre
         .collect::<Vec<String>>()
         .join("\n");
 
-    embed
+    let mut embed = embed
         .title(&poll.question)
         .description(format!("**Options:**\n{}", options_list))
         .field("Voting Method", method_name, true)
         .field("Poll ID", &poll.id, true)
-        .field("Ends", ends_at_str, true)
-        .footer(|f| f.text("Click the buttons below to vote!"))
-        .timestamp(poll.created_at.to_rfc3339())
+        .field("Ends", ends_at_str, true);
+
+    if let Some(roles) = &poll.allowed_roles {
+        if let Some(role_id) = roles.get(0) {
+            embed = embed.field("Who Can Vote", format!("<@&{}> only", role_id), false);
+        }
+    }
+
+    embed.footer(|f| f.text("Click the buttons below to vote!")).timestamp(poll.created_at.to_rfc3339())
 }
 
 // Using camelCase format for consistency
@@ -429,7 +535,31 @@ async fn handle_end_poll(
     };
 
     if !poll.is_active {
-        send_error_response(ctx, command, "This poll has already ended").await?;
+        let votes = database.get_poll_votes(&poll_id).await?;
+        let results = calculate_poll_results(&poll, &votes);
+        
+        let msg = if let Some(ends_at) = poll.ends_at {
+            if ends_at < Utc::now() {
+                format!("This poll has already ended at <t:{}:f>, here are the results:", ends_at.timestamp())
+            } else {
+                "This poll has already ended, here are the results:".to_string()
+            }
+        } else {
+            "This poll has already ended, here are the results:".to_string()
+        };
+
+        command
+            .create_interaction_response(&ctx.http, |response| {
+                response
+                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                    .interaction_response_data(|message| {
+                        message
+                            .ephemeral(true)
+                            .content(msg)
+                            .embed(|e| create_results_embed(e, &poll, &results))
+                    })
+            })
+            .await?;
         return Ok(());
     }
 
@@ -555,6 +685,93 @@ fn create_results_embed<'a>(
         .field("Details", &summary_display, false) // Use the potentially truncated summary
         .footer(|f| f.text(format!("Poll ID: {}", poll.id)))
         .timestamp(Utc::now().to_rfc3339())
+}
+
+// Export poll votes as CSV
+async fn handle_export_poll(
+    database: &Database,
+    ctx: &Context,
+    command: &ApplicationCommandInteraction,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let poll_id = match command
+        .data
+        .options
+        .first()
+        .and_then(|option| option.options.first())
+        .and_then(|option| option.value.as_ref())
+        .and_then(|value| value.as_str())
+    {
+        Some(id) => id.to_string(),
+        None => {
+            send_error_response(ctx, command, "No poll ID provided").await?;
+            return Ok(());
+        }
+    };
+
+    let poll = match database.get_poll(&poll_id).await {
+        Ok(p) => p,
+        Err(_) => {
+            send_error_response(ctx, command, "Poll not found").await?;
+            return Ok(());
+        }
+    };
+
+    if poll.is_active {
+        send_error_response(ctx, command, "Cannot export data for an active poll. End the poll first with `/poll end`.").await?;
+        return Ok(());
+    }
+
+    let votes = database.get_poll_votes(&poll_id).await?;
+    
+    // Generate CSV content
+    let mut csv_content = String::new();
+    csv_content.push_str("User ID,Option ID,Option Text,Rating,Timestamp\n");
+    
+    for vote in &votes {
+        let option_text = poll.options.iter()
+            .find(|opt| opt.id == vote.option_id)
+            .map(|opt| opt.text.clone())
+            .unwrap_or_else(|| "Unknown Option".to_string());
+        
+        // Escape CSV values that contain commas or quotes
+        let escaped_text = if option_text.contains(',') || option_text.contains('"') {
+            format!("\"{}\"", option_text.replace('"', "\"\""))
+        } else {
+            option_text
+        };
+        
+        csv_content.push_str(&format!(
+            "{},{},{},{},{}\n",
+            vote.user_id,
+            vote.option_id,
+            escaped_text,
+            vote.rating,
+            vote.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+        ));
+    }
+
+    // Send the CSV content as text since file attachments aren't supported in responses
+    command
+        .create_interaction_response(&ctx.http, |response| {
+            response
+                .kind(InteractionResponseType::ChannelMessageWithSource)
+                .interaction_response_data(|message| {
+                    message
+                        .ephemeral(true)
+                        .content(format!("**Exported {} votes from poll: \"{}\"**\n\n```csv\n{}\n```", 
+                            votes.len(), 
+                            poll.question,
+                            if csv_content.len() > 1800 { 
+                                format!("{}...\n(CSV truncated - too many votes to display)", &csv_content[..1800])
+                            } else { 
+                                csv_content 
+                            }
+                        ))
+                })
+        })
+        .await?;
+
+    Ok(())
 }
 
 async fn send_error_response(

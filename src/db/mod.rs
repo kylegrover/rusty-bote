@@ -78,7 +78,8 @@ impl Database {
                 created_at TIMESTAMPTZ NOT NULL,
                 ends_at TIMESTAMPTZ,
                 is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                message_id TEXT
+                message_id TEXT,
+                allowed_roles TEXT[]
             );
             "#,
         )
@@ -123,8 +124,8 @@ impl Database {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         sqlx::query(
             r#"
-            INSERT INTO polls (id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
+            INSERT INTO polls (id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id, allowed_roles)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, $10)
             "#,
         )
         .bind(&poll.id)
@@ -141,6 +142,7 @@ impl Database {
         .bind(poll.created_at)
         .bind(poll.ends_at)
         .bind(poll.is_active)
+        .bind(&poll.allowed_roles)
         .execute(&self.pool)
         .await?;
 
@@ -191,7 +193,7 @@ impl Database {
         // Get the poll
         let poll_row = sqlx::query(
             r#"
-            SELECT id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id 
+            SELECT id, guild_id, channel_id, creator_id, question, voting_method, created_at, ends_at, is_active, message_id, allowed_roles 
             FROM polls 
             WHERE id = $1
             "#,
@@ -253,6 +255,7 @@ impl Database {
             ends_at,
             is_active,
             message_id,
+            allowed_roles: poll_row.try_get::<Option<Vec<String>>, _>("allowed_roles").unwrap_or(None),
         };
         
         Ok(poll)
@@ -333,6 +336,7 @@ impl Database {
                 created_at: Utc::now(),
                 is_active: true,
                 message_id: None,
+                allowed_roles: None,
             }
         }).collect();
 
@@ -372,6 +376,7 @@ impl Database {
                 created_at: Utc::now(),
                 is_active: false,
                 message_id: None,
+                allowed_roles: None,
             }
         }).collect();
         Ok(partial_polls)

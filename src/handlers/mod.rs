@@ -119,15 +119,35 @@ pub async fn handle_component(
         return Ok(());
     };
 
-    // If poll is found but inactive, disallow all but the initial "vote_button"
+    // If poll is found but inactive, disallow all interactions
     if let Some(ref p) = poll {
-        if !p.is_active && custom_id != "vote_button" && custom_id != "voteButton" {
+        if !p.is_active {
             component.create_interaction_response(&ctx.http, |response| {
                 response
                     .kind(InteractionResponseType::ChannelMessageWithSource)
                     .interaction_response_data(|message| message.content("This poll has ended.").ephemeral(true))
             }).await?;
             return Ok(());
+        }
+
+        // Enforce role restrictions
+        if let Some(allowed_roles) = &p.allowed_roles {
+            let has_permission = if let Some(member) = &component.member {
+                member.roles.iter().any(|role_id| allowed_roles.contains(&role_id.to_string()))
+            } else {
+                false // If we can't verify roles (e.g. not in guild), deny access
+            };
+
+            if !has_permission {
+                component.create_interaction_response(&ctx.http, |response| {
+                    response
+                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .interaction_response_data(|message| {
+                            message.content("You do not have permission to vote in this poll.").ephemeral(true)
+                        })
+                }).await?;
+                return Ok(());
+            }
         }
     }
 
