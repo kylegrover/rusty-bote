@@ -227,31 +227,35 @@ pub async fn handle_vote_button(
                 .await?;
         },
         crate::models::VotingMethod::Ranked => {
+            // Paginate ranked UI like STAR so we don't exceed Discord's 5 action row limit
+            let page = if component.data.custom_id.starts_with("rankPage_") {
+                component.data.custom_id
+                    .split('_')
+                    .last()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(0)
+            } else if component.data.custom_id.starts_with("rank_page_") {
+                component.data.custom_id
+                    .split('_')
+                    .last()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+
+            let options_per_page = 4;
+            let total_pages = (poll.options.len() + options_per_page - 1) / options_per_page;
+            let start_idx = page * options_per_page;
+            let end_idx = std::cmp::min(start_idx + options_per_page, poll.options.len());
+            let options_to_show = &poll.options[start_idx..end_idx];
+
             let user_id = component.user.id.to_string();
             let existing_votes = database.get_user_poll_votes(&poll.id, &user_id).await?;
             let mut option_ranks: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
             for vote in existing_votes {
                 option_ranks.insert(vote.option_id, vote.rating);
             }
-
-            let mut ranked_options = poll.options.clone();
-            ranked_options.sort_by(|a, b| {
-                let rank_a = option_ranks.get(&a.id).unwrap_or(&0);
-                let rank_b = option_ranks.get(&b.id).unwrap_or(&0);
-
-                let has_rank_a = *rank_a > 0;
-                let has_rank_b = *rank_b > 0;
-
-                if has_rank_a != has_rank_b {
-                    return has_rank_a.cmp(&has_rank_b).reverse();
-                }
-
-                if has_rank_a && has_rank_b {
-                    return rank_a.cmp(rank_b);
-                }
-
-                a.text.cmp(&b.text)
-            });
 
             component
                 .create_interaction_response(&ctx.http, |response| {
@@ -260,9 +264,9 @@ pub async fn handle_vote_button(
                         .interaction_response_data(|message| {
                             message
                                 .ephemeral(true)
-                                .content(format!("**{}**\nRank the options in your order of preference:", poll.question))
+                                .content(format!("**{}**\nRank the options in your order of preference:\nPage {} of {}", poll.question, page + 1, total_pages))
                                 .components(|c| {
-                                    for option in &ranked_options {
+                                    for option in options_to_show {
                                         let current_rank = option_ranks.get(&option.id).unwrap_or(&0);
                                         let display_text = if *current_rank > 0 {
                                             format!("#{} - {}", current_rank, option.text)
@@ -298,13 +302,31 @@ pub async fn handle_vote_button(
                                             })
                                         });
                                     }
+
+                                    // Navigation / done row
                                     c.create_action_row(|row| {
+                                        if page > 0 {
+                                            row.create_button(|btn| {
+                                                btn.custom_id(format!("rankPage_{}_{}", poll.id, page - 1))
+                                                   .label("◀ Previous")
+                                                   .style(ButtonStyle::Secondary)
+                                            });
+                                        }
                                         row.create_button(|btn| {
                                             btn.custom_id(format!("doneVoting_{}", poll.id))
                                                .label("Done Voting")
                                                .style(ButtonStyle::Success)
-                                        })
+                                        });
+                                        if page < total_pages - 1 {
+                                            row.create_button(|btn| {
+                                                btn.custom_id(format!("rankPage_{}_{}", poll.id, page + 1))
+                                                   .label("Next ▶")
+                                                   .style(ButtonStyle::Secondary)
+                                            });
+                                        }
+                                        row
                                     });
+
                                     c
                                 })
                         })

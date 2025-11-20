@@ -245,6 +245,14 @@ pub async fn handle_component(
         if let Some(p) = poll {
             vote::handle_vote_button(database, ctx, component, &p).await?;
         }
+    } else if custom_id.starts_with("rankPage_") {
+        let parts: Vec<&str> = custom_id.split('_').collect();
+        if parts.len() >= 3 {
+            info!("Navigating to rank voting page {}", parts[2]);
+        }
+        if let Some(p) = poll {
+            vote::handle_vote_button(database, ctx, component, &p).await?;
+        }
     } else if custom_id.starts_with("doneVoting_") {
         if let Some(p) = poll {
             vote::handle_done_voting(database, ctx, component, &p.id, &p).await?;
