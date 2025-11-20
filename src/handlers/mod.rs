@@ -243,6 +243,64 @@ pub async fn handle_component(
         component.create_interaction_response(&ctx.http, |response| {
             response.kind(InteractionResponseType::DeferredUpdateMessage)
         }).await?;
+    } else if custom_id == "selectEndPoll" {
+        if let Some(poll_id) = component.data.values.get(0) {
+            // We need to fetch the poll to get channel_id and message_id
+            match database.get_poll(poll_id).await {
+                Ok(poll) => {
+                    component.create_interaction_response(&ctx.http, |response| {
+                        response.kind(InteractionResponseType::DeferredUpdateMessage)
+                    }).await?;
+                    
+                    match crate::commands::poll::end_poll_logic(database, ctx, poll_id, &poll.channel_id, poll.message_id).await {
+                        Ok(_) => {
+                            component.edit_original_interaction_response(&ctx.http, |response| {
+                                response.content(format!("Poll '{}' ended successfully.", poll.question)).components(|c| c)
+                            }).await?;
+                        }
+                        Err(e) => {
+                            error!("Error ending poll {} via selection: {}", poll_id, e);
+                            component.edit_original_interaction_response(&ctx.http, |response| {
+                                response.content(format!("Failed to end poll: {}", e)).components(|c| c)
+                            }).await?;
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to fetch poll {} for ending: {}", poll_id, e);
+                    component.create_interaction_response(&ctx.http, |response| {
+                        response.kind(InteractionResponseType::ChannelMessageWithSource)
+                            .interaction_response_data(|msg| msg.content("Failed to fetch poll details.").ephemeral(true))
+                    }).await?;
+                }
+            }
+        }
+    } else if custom_id == "selectResultsPoll" {
+        if let Some(poll_id) = component.data.values.get(0) {
+            match database.get_poll(poll_id).await {
+                Ok(poll) => {
+                    let votes = database.get_poll_votes(poll_id).await?;
+                    let results = crate::commands::poll::calculate_poll_results(&poll, &votes);
+                    
+                    component.create_interaction_response(&ctx.http, |response| {
+                        response.kind(InteractionResponseType::UpdateMessage)
+                            .interaction_response_data(|message| {
+                                message
+                                    .content("") // Clear the "Select a poll..." text
+                                    .components(|c| c) // Remove the select menu
+                                    .embed(|e| crate::commands::poll::create_results_embed(e, &poll, &results))
+                            })
+                    }).await?;
+                }
+                Err(e) => {
+                    error!("Failed to fetch poll {} for results: {}", poll_id, e);
+                    component.create_interaction_response(&ctx.http, |response| {
+                        response.kind(InteractionResponseType::ChannelMessageWithSource)
+                            .interaction_response_data(|msg| msg.content("Failed to fetch poll details.").ephemeral(true))
+                    }).await?;
+                }
+            }
+        }
     } else {
         warn!("Unhandled component custom_id: {}", custom_id);
         component.create_interaction_response(&ctx.http, |response| {

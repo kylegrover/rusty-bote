@@ -76,7 +76,7 @@ pub fn create_poll_command(command: &mut CreateApplicationCommand) -> &mut Creat
                         .name("poll_id")
                         .description("ID of the poll to end")
                         .kind(serenity::model::application::command::CommandOptionType::String)
-                        .required(true)
+                        .required(false)
                 })
         })
         .create_option(|option| {
@@ -89,7 +89,7 @@ pub fn create_poll_command(command: &mut CreateApplicationCommand) -> &mut Creat
                         .name("poll_id")
                         .description("ID of the poll to show results for")
                         .kind(serenity::model::application::command::CommandOptionType::String)
-                        .required(true)
+                        .required(false)
                 })
         })
         .create_option(|option| {
@@ -157,9 +157,9 @@ pub async fn handle_poll_command(
                                     **Approval**: Simply approve any options you like. Most approvals wins.", 
                                     false)
                                 .field("⚙️ Managing Polls", 
-                                    "• End active polls with `/poll end [poll-id]`\n\
+                                    "• End active polls with `/poll end` (interactive) or `/poll end [poll-id]`\n\
+                                    • See results with `/poll results` (interactive) or `/poll results [poll-id]`\n\
                                     • See all server polls with `/poll list`\n\
-                                    • See results of ended polls with `/poll results [poll-id]`\n\
                                     • Export vote data with `/poll export [poll-id]` (for completed polls)\n\
                                     • Poll IDs are shown in poll embeds for reference", 
                                     false)
@@ -321,17 +321,55 @@ async fn handle_poll_results(
     ctx: &Context,
     command: &ApplicationCommandInteraction,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let poll_id = match command
+    let poll_id_opt = command
         .data
         .options
         .first()
         .and_then(|option| option.options.first())
         .and_then(|option| option.value.as_ref())
         .and_then(|value| value.as_str())
-    {
-        Some(id) => id.to_string(),
+        .map(|s| s.to_string());
+
+    let poll_id = match poll_id_opt {
+        Some(id) => id,
         None => {
-            send_error_response(ctx, command, "No poll ID provided").await?;
+            // No ID provided, show selection menu
+            let guild_id = command.guild_id.ok_or("Missing guild ID")?.to_string();
+            let ended_polls = database.get_recently_ended_polls_by_guild(&guild_id, 25).await?;
+
+            if ended_polls.is_empty() {
+                send_error_response(ctx, command, "No recently ended polls found.").await?;
+                return Ok(());
+            }
+
+            command.create_interaction_response(&ctx.http, |response| {
+                response
+                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                    .interaction_response_data(|message| {
+                        message
+                            .ephemeral(true)
+                            .content("Select a poll to view results:")
+                            .components(|c| {
+                                c.create_action_row(|row| {
+                                    row.create_select_menu(|menu| {
+                                        menu.custom_id("selectResultsPoll")
+                                            .placeholder("Choose a poll...")
+                                            .options(|opts| {
+                                                for poll in ended_polls.iter() {
+                                                    let label = if poll.question.len() > 90 {
+                                                        format!("{}...", &poll.question[..87])
+                                                    } else {
+                                                        poll.question.clone()
+                                                    };
+                                                    opts.create_option(|o| o.label(label).value(&poll.id));
+                                                }
+                                                opts
+                                            })
+                                    })
+                                })
+                            })
+                    })
+            }).await?;
             return Ok(());
         }
     };
@@ -511,17 +549,55 @@ async fn handle_end_poll(
     ctx: &Context,
     command: &ApplicationCommandInteraction,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let poll_id = match command
+    let poll_id_opt = command
         .data
         .options
         .first()
         .and_then(|option| option.options.first())
         .and_then(|option| option.value.as_ref())
         .and_then(|value| value.as_str())
-    {
-        Some(id) => id.to_string(),
+        .map(|s| s.to_string());
+
+    let poll_id = match poll_id_opt {
+        Some(id) => id,
         None => {
-            send_error_response(ctx, command, "No poll ID provided").await?;
+            // No ID provided, show selection menu
+            let guild_id = command.guild_id.ok_or("Missing guild ID")?.to_string();
+            let active_polls = database.get_active_polls_by_guild(&guild_id).await?;
+
+            if active_polls.is_empty() {
+                send_error_response(ctx, command, "No active polls found to end.").await?;
+                return Ok(());
+            }
+
+            command.create_interaction_response(&ctx.http, |response| {
+                response
+                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                    .interaction_response_data(|message| {
+                        message
+                            .ephemeral(true)
+                            .content("Select a poll to end:")
+                            .components(|c| {
+                                c.create_action_row(|row| {
+                                    row.create_select_menu(|menu| {
+                                        menu.custom_id("selectEndPoll")
+                                            .placeholder("Choose a poll...")
+                                            .options(|opts| {
+                                                for poll in active_polls.iter().take(25) {
+                                                    let label = if poll.question.len() > 90 {
+                                                        format!("{}...", &poll.question[..87])
+                                                    } else {
+                                                        poll.question.clone()
+                                                    };
+                                                    opts.create_option(|o| o.label(label).value(&poll.id));
+                                                }
+                                                opts
+                                            })
+                                    })
+                                })
+                            })
+                    })
+            }).await?;
             return Ok(());
         }
     };
@@ -654,7 +730,7 @@ async fn handle_list_polls(
     Ok(())
 }
 
-fn calculate_poll_results(
+pub fn calculate_poll_results(
     poll: &crate::models::Poll,
     votes: &[crate::models::Vote],
 ) -> crate::voting::PollResults {
@@ -666,7 +742,7 @@ fn calculate_poll_results(
     }
 }
 
-fn create_results_embed<'a>(
+pub fn create_results_embed<'a>(
     embed: &'a mut CreateEmbed,
     poll: &crate::models::Poll,
     results: &crate::voting::PollResults,
