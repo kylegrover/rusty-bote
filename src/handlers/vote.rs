@@ -600,24 +600,14 @@ pub async fn handle_approval_vote_toggle(
     Ok(())
 }
 
-pub async fn handle_done_voting(
-    database: &Database,
-    ctx: &Context,
-    component: &MessageComponentInteraction,
-    poll_id: &str,
-    poll: &Poll,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    info!("User completed voting for poll_id={}", poll_id);
-    let user_id = component.user.id.to_string();
-    let user_votes = database.get_user_poll_votes(poll_id, &user_id).await?;
-
+pub fn format_user_vote(poll: &Poll, user_votes: &[crate::models::Vote]) -> String {
     let mut vote_summary = format!("**{}**\n{} Voting\n\nYour vote has been recorded:\n", 
         poll.question, poll.voting_method);
 
     match poll.voting_method {
         crate::models::VotingMethod::Star => {
             let mut vote_map = std::collections::HashMap::new();
-            for v in &user_votes {
+            for v in user_votes {
                 vote_map.insert(v.option_id.clone(), v.rating);
             }
             for option in &poll.options {
@@ -635,7 +625,7 @@ pub async fn handle_done_voting(
         },
         crate::models::VotingMethod::Approval => {
             let mut vote_map = std::collections::HashMap::new();
-            for v in &user_votes {
+            for v in user_votes {
                 vote_map.insert(v.option_id.clone(), v.rating);
             }
             for option in &poll.options {
@@ -646,7 +636,7 @@ pub async fn handle_done_voting(
         },
         crate::models::VotingMethod::Ranked => {
             let mut rankings = std::collections::HashMap::new();
-            for v in &user_votes {
+            for v in user_votes {
                 if v.rating > 0 {
                     rankings.insert(v.option_id.clone(), v.rating);
                 }
@@ -676,6 +666,21 @@ pub async fn handle_done_voting(
             }
         }
     }
+    vote_summary
+}
+
+pub async fn handle_done_voting(
+    database: &Database,
+    ctx: &Context,
+    component: &MessageComponentInteraction,
+    poll_id: &str,
+    poll: &Poll,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    info!("User completed voting for poll_id={}", poll_id);
+    let user_id = component.user.id.to_string();
+    let user_votes = database.get_user_poll_votes(poll_id, &user_id).await?;
+
+    let vote_summary = format_user_vote(poll, &user_votes);
     
     component
         .create_interaction_response(&ctx.http, |response| {
@@ -690,6 +695,11 @@ pub async fn handle_done_voting(
                                     btn.custom_id(format!("voteChange_{}", poll_id))
                                        .label("Change My Vote")
                                        .style(ButtonStyle::Secondary)
+                                })
+                                .create_button(|btn| {
+                                    btn.custom_id(format!("shareVote_{}", poll_id))
+                                       .label("Share My Vote")
+                                       .style(ButtonStyle::Primary)
                                 })
                             })
                         })

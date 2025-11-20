@@ -5,6 +5,7 @@ use crate::models::Poll;
 use serenity::model::application::interaction::{Interaction, InteractionResponseType};
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use serenity::model::application::interaction::message_component::MessageComponentInteraction;
+use serenity::model::application::component::ButtonStyle;
 use serenity::prelude::*;
 use log::{info, warn, error};
 
@@ -109,8 +110,16 @@ pub async fn handle_component(
                             .interaction_response_data(|message| {
                                 message
                                     .content("") // Clear the "Select a poll..." text
-                                    .components(|c| c) // Remove the select menu
                                     .embed(|e| crate::commands::poll::create_results_embed(e, &poll, &results))
+                                    .components(|c| {
+                                        c.create_action_row(|row| {
+                                            row.create_button(|btn| {
+                                                btn.custom_id(format!("shareResults_{}", poll.id))
+                                                   .label("Share Results")
+                                                   .style(ButtonStyle::Primary)
+                                            })
+                                        })
+                                    })
                             })
                     }).await?;
                 }
@@ -306,6 +315,66 @@ pub async fn handle_component(
         component.create_interaction_response(&ctx.http, |response| {
             response.kind(InteractionResponseType::DeferredUpdateMessage)
         }).await?;
+    } else if custom_id.starts_with("shareResults_") {
+        if let Some(p) = poll {
+            let votes = database.get_poll_votes(&p.id).await?;
+            let results = crate::commands::poll::calculate_poll_results(&p, &votes);
+            
+            // Send public message
+            component.channel_id.send_message(&ctx.http, |m| {
+                m.content(format!("Results for poll '{}' shared by <@{}>:", p.question, component.user.id))
+                 .embed(|e| crate::commands::poll::create_results_embed(e, &p, &results))
+            }).await?;
+
+            // Update ephemeral message to disable button
+            component.create_interaction_response(&ctx.http, |response| {
+                response.kind(InteractionResponseType::UpdateMessage)
+                    .interaction_response_data(|message| {
+                        message.components(|c| {
+                            c.create_action_row(|row| {
+                                row.create_button(|btn| {
+                                    btn.custom_id("shared")
+                                       .label("Results Shared!")
+                                       .style(ButtonStyle::Success)
+                                       .disabled(true)
+                                })
+                            })
+                        })
+                    })
+            }).await?;
+        }
+    } else if custom_id.starts_with("shareVote_") {
+        if let Some(p) = poll {
+            let user_votes = database.get_user_poll_votes(&p.id, &component.user.id.to_string()).await?;
+            let vote_summary = vote::format_user_vote(&p, &user_votes);
+            
+            // Send public message
+            component.channel_id.send_message(&ctx.http, |m| {
+                m.content(format!("<@{}> shared their vote:\n{}", component.user.id, vote_summary))
+            }).await?;
+
+            // Update ephemeral message to disable button
+            component.create_interaction_response(&ctx.http, |response| {
+                response.kind(InteractionResponseType::UpdateMessage)
+                    .interaction_response_data(|message| {
+                        message.components(|c| {
+                            c.create_action_row(|row| {
+                                row.create_button(|btn| {
+                                    btn.custom_id(format!("voteChange_{}", p.id))
+                                       .label("Change My Vote")
+                                       .style(ButtonStyle::Secondary)
+                                })
+                                .create_button(|btn| {
+                                    btn.custom_id("shared")
+                                       .label("Vote Shared!")
+                                       .style(ButtonStyle::Success)
+                                       .disabled(true)
+                                })
+                            })
+                        })
+                    })
+            }).await?;
+        }
     } else {
         warn!("Unhandled component custom_id: {}", custom_id);
         component.create_interaction_response(&ctx.http, |response| {

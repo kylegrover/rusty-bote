@@ -404,6 +404,15 @@ async fn handle_poll_results(
                     message
                         .ephemeral(true)
                         .embed(|e| create_results_embed(e, &poll, &results))
+                        .components(|c| {
+                            c.create_action_row(|row| {
+                                row.create_button(|btn| {
+                                    btn.custom_id(format!("shareResults_{}", poll.id))
+                                       .label("Share Results")
+                                       .style(ButtonStyle::Primary)
+                                })
+                            })
+                        })
                 })
         })
         .await?;
