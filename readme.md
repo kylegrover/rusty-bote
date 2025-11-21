@@ -1,8 +1,8 @@
-# Rusty Bote 🛥️*ᵗᵒᵒᵗ ᵗᵒᵒᵗ*
+# Trusty Vote ⭐👍✅
 
 *Lightweight rust discord bot for running alternative polling/voting methods such as STAR*
 
-### <a href="https://discord.com/oauth2/authorize?client_id=1360286244856402222" target="_blank" noreferer>Add Rusty Bote to a Discord Server 🚢</a>
+### <a href="https://discord.com/oauth2/authorize?client_id=1360286244856402222" target="_blank" noreferer">+ Add Trusty Vote to a Discord Server ⭐</a>
 
 see **project.md** for project info. project.md is also designed to be passed to an LLM along with any prompts for assistance with the project.
 

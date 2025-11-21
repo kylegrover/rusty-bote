@@ -22,7 +22,7 @@ impl Database {
                     let mut pg = PostgreSQL::default();
                     pg.setup().await.map_err(|e| format!("Failed to setup embedded Postgres: {e}"))?;
                     pg.start().await.map_err(|e| format!("Failed to start embedded Postgres: {e}"))?;
-                    let db_name = "rusty_bote_dev";
+                    let db_name = "trusty_vote_dev";
                     pg.create_database(db_name).await.map_err(|e| format!("Failed to create database: {e}"))?;
                     let settings = pg.settings();
                     let url = format!(

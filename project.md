@@ -1,7 +1,7 @@
-# Rusty-Bote: Discord STAR Voting Bot
+# Trusty-Vote: Discord STAR Voting Bot
 
 ## Project Overview
-Rusty-Bote is a lightweight Discord bot written in Rust that allows server members to create and participate in polls using various voting methods—STAR voting, plurality, ranked choice, and approval. The bot provides an intuitive interface through slash commands and interactive components.
+Trusty Vote (previously Rusty Bote) is a lightweight Discord bot written in Rust that allows server members to create and participate in polls using various voting methods—STAR voting, plurality, ranked choice, and approval. The bot provides an intuitive interface through slash commands and interactive components.
 
 ## Core Features
 - Create polls via slash commands  
@@ -74,7 +74,7 @@ The bot uses PostgreSQL for data storage. For local development, you can use the
 - `/poll help` - Display usage information and command help
 
 ### Help Subcommand Implementation
-The `/poll help` subcommand provides a concise overview of Rusty-Bote. It summarizes the workflow, voting methods, and guides users through the bot's functionality.
+The `/poll help` subcommand provides a concise overview of Trusty-Vote. It summarizes the workflow, voting methods, and guides users through the bot's functionality.
 
 ### Poll Creation Parameters
 - `question` - The poll question  

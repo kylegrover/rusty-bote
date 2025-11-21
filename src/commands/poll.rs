@@ -143,8 +143,8 @@ pub async fn handle_poll_command(
                 resp.kind(serenity::model::application::interaction::InteractionResponseType::ChannelMessageWithSource)
                     .interaction_response_data(|msg| {
                         msg.ephemeral(true).embed(|e| {
-                            e.title("📊 Rusty-Bote Poll System Guide")
-                                .description("Welcome to Rusty-Bote! I'm here to help your server make better decisions through various voting methods.")
+                            e.title("📊 Trusty Vote Poll System Guide")
+                                .description("Welcome to Trusty Vote! I'm here to help your server make better decisions with better voting.")
                                 .field("📝 Creating Polls", 
                                     "Use `/poll create` with a question, comma-separated options, and your preferred voting method.\n\
                                     For longer polls, set the duration in minutes (use 0 for manual closing).\n\
@@ -154,7 +154,7 @@ pub async fn handle_poll_command(
                                     "**STAR Voting**: Rate each option 0-5 stars. Combines scoring and an automatic runoff between top choices.\n\
                                     **Plurality**: Classic 'most votes wins' system. Each person picks one option.\n\
                                     **Ranked Choice**: Rank options in order of preference. Eliminates lowest choices until majority reached.\n\
-                                    **Approval**: Simply approve any options you like. Most approvals wins.", 
+                                    **Approval**: Approve all of the options you like. Most approvals wins.", 
                                     false)
                                 .field("⚙️ Managing Polls", 
                                     "• End active polls with `/poll end` (interactive) or `/poll end [poll-id]`\n\
@@ -168,7 +168,7 @@ pub async fn handle_poll_command(
                                     > For complex decisions, STAR or Ranked Choice voting reduces tactical voting\n\
                                     > Plurality works best for simple A/B decisions", 
                                     false)
-                                .footer(|f| f.text("Rusty-Bote • Helping your server make better decisions"))
+                                .footer(|f| f.text("Trusty Vote • Helping your server make better decisions"))
                                 .color((255, 165, 0))
                         })
                     })

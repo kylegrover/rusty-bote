@@ -2084,27 +2084,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eded382c5f5f786b989652c49544c4877d9f015cc22e145a5ea8ea66c2921cd2"
 
 [[package]]
-name = "rusty-bote"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "dotenvy",
- "env_logger",
- "lazy_static",
- "log",
- "postgresql_embedded",
- "regex",
- "serde",
- "serde_json",
- "serenity",
- "sqlx",
- "thiserror 1.0.69",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "ryu"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2922,6 +2901,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e672c95779cf947c5311f83787af4fa8fffd12fb27e4993211a84bdfd9610f9c"
 dependencies = [
  "once_cell",
+]
+
+[[package]]
+name = "trusty-vote"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "dotenvy",
+ "env_logger",
+ "lazy_static",
+ "log",
+ "postgresql_embedded",
+ "regex",
+ "serde",
+ "serde_json",
+ "serenity",
+ "sqlx",
+ "thiserror 1.0.69",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
