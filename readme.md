@@ -1,6 +1,6 @@
 # Trusty Vote ⭐👍✅
 
-*Lightweight rust discord bot for running alternative polling/voting methods such as STAR*
+*Lightweight rust discord bot for running alternative polling/voting methods such as STAR. Previously called Rusty Bote.*
 
 ### <a href="https://discord.com/oauth2/authorize?client_id=1360286244856402222" target="_blank" noreferer>+ Add Trusty Vote to a Discord Server ⭐</a>
 
