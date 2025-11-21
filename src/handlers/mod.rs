@@ -5,6 +5,7 @@ use crate::models::Poll;
 use serenity::model::application::interaction::{Interaction, InteractionResponseType};
 use serenity::model::application::interaction::application_command::ApplicationCommandInteraction;
 use serenity::model::application::interaction::message_component::MessageComponentInteraction;
+use serenity::model::application::component::ButtonStyle;
 use serenity::prelude::*;
 use log::{info, warn, error};
 
@@ -63,6 +64,77 @@ pub async fn handle_component(
     let custom_id = &component.data.custom_id;
     info!("Received component interaction: {}", custom_id);
 
+    // Handle selection menus that don't have poll_id in custom_id
+    if custom_id == "selectEndPoll" {
+        if let Some(poll_id) = component.data.values.get(0) {
+            // We need to fetch the poll to get channel_id and message_id
+            match database.get_poll(poll_id).await {
+                Ok(poll) => {
+                    component.create_interaction_response(&ctx.http, |response| {
+                        response.kind(InteractionResponseType::DeferredUpdateMessage)
+                    }).await?;
+                    
+                    match crate::commands::poll::end_poll_logic(database, ctx, poll_id, &poll.channel_id, poll.message_id).await {
+                        Ok(_) => {
+                            component.edit_original_interaction_response(&ctx.http, |response| {
+                                response.content(format!("Poll '{}' ended successfully.", poll.question)).components(|c| c)
+                            }).await?;
+                        }
+                        Err(e) => {
+                            error!("Error ending poll {} via selection: {}", poll_id, e);
+                            component.edit_original_interaction_response(&ctx.http, |response| {
+                                response.content(format!("Failed to end poll: {}", e)).components(|c| c)
+                            }).await?;
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to fetch poll {} for ending: {}", poll_id, e);
+                    component.create_interaction_response(&ctx.http, |response| {
+                        response.kind(InteractionResponseType::ChannelMessageWithSource)
+                            .interaction_response_data(|msg| msg.content("Failed to fetch poll details.").ephemeral(true))
+                    }).await?;
+                }
+            }
+        }
+        return Ok(());
+    } else if custom_id == "selectResultsPoll" {
+        if let Some(poll_id) = component.data.values.get(0) {
+            match database.get_poll(poll_id).await {
+                Ok(poll) => {
+                    let votes = database.get_poll_votes(poll_id).await?;
+                    let results = crate::commands::poll::calculate_poll_results(&poll, &votes);
+                    
+                    component.create_interaction_response(&ctx.http, |response| {
+                        response.kind(InteractionResponseType::UpdateMessage)
+                            .interaction_response_data(|message| {
+                                message
+                                    .content("") // Clear the "Select a poll..." text
+                                    .embed(|e| crate::commands::poll::create_results_embed(e, &poll, &results))
+                                    .components(|c| {
+                                        c.create_action_row(|row| {
+                                            row.create_button(|btn| {
+                                                btn.custom_id(format!("shareResults_{}", poll.id))
+                                                   .label("Share Results")
+                                                   .style(ButtonStyle::Primary)
+                                            })
+                                        })
+                                    })
+                            })
+                    }).await?;
+                }
+                Err(e) => {
+                    error!("Failed to fetch poll {} for results: {}", poll_id, e);
+                    component.create_interaction_response(&ctx.http, |response| {
+                        response.kind(InteractionResponseType::ChannelMessageWithSource)
+                            .interaction_response_data(|msg| msg.content("Failed to fetch poll details.").ephemeral(true))
+                    }).await?;
+                }
+            }
+        }
+        return Ok(());
+    }
+
     // Extract poll_id from the component custom_id
     let poll_id_opt: Option<String> = if custom_id == "vote_button" || custom_id == "voteButton" {
         component
@@ -119,9 +191,9 @@ pub async fn handle_component(
         return Ok(());
     };
 
-    // If poll is found but inactive, disallow all interactions
+    // If poll is found but inactive, disallow all interactions except sharing results/votes
     if let Some(ref p) = poll {
-        if !p.is_active {
+        if !p.is_active && !custom_id.starts_with("shareResults_") && !custom_id.starts_with("shareVote_") {
             component.create_interaction_response(&ctx.http, |response| {
                 response
                     .kind(InteractionResponseType::ChannelMessageWithSource)
@@ -169,6 +241,14 @@ pub async fn handle_component(
         let parts: Vec<&str> = custom_id.split('_').collect();
         if parts.len() >= 3 {
             info!("Navigating to star voting page {}", parts[2]);
+        }
+        if let Some(p) = poll {
+            vote::handle_vote_button(database, ctx, component, &p).await?;
+        }
+    } else if custom_id.starts_with("rankPage_") {
+        let parts: Vec<&str> = custom_id.split('_').collect();
+        if parts.len() >= 3 {
+            info!("Navigating to rank voting page {}", parts[2]);
         }
         if let Some(p) = poll {
             vote::handle_vote_button(database, ctx, component, &p).await?;
@@ -243,6 +323,70 @@ pub async fn handle_component(
         component.create_interaction_response(&ctx.http, |response| {
             response.kind(InteractionResponseType::DeferredUpdateMessage)
         }).await?;
+    } else if custom_id.starts_with("shareResults_") {
+        if let Some(p) = poll {
+            let votes = database.get_poll_votes(&p.id).await?;
+            let results = crate::commands::poll::calculate_poll_results(&p, &votes);
+            
+            // Send public message
+            component.channel_id.send_message(&ctx.http, |m| {
+                m.content(format!("Results for poll '{}' shared by <@{}>:", p.question, component.user.id))
+                 .embed(|e| crate::commands::poll::create_results_embed(e, &p, &results))
+            }).await?;
+
+            // Update ephemeral message to disable button
+            component.create_interaction_response(&ctx.http, |response| {
+                response.kind(InteractionResponseType::UpdateMessage)
+                    .interaction_response_data(|message| {
+                        message.components(|c| {
+                            c.create_action_row(|row| {
+                                row.create_button(|btn| {
+                                    btn.custom_id("shared")
+                                       .label("Results Shared!")
+                                       .style(ButtonStyle::Success)
+                                       .disabled(true)
+                                })
+                            })
+                        })
+                    })
+            }).await?;
+        }
+    } else if custom_id.starts_with("shareVote_") {
+        if let Some(p) = poll {
+            let user_votes = database.get_user_poll_votes(&p.id, &component.user.id.to_string()).await?;
+            let vote_details = vote::format_user_vote(&p, &user_votes);
+            
+            // Send public message
+            component.channel_id.send_message(&ctx.http, |m| {
+                m.embed(|e| {
+                    e.title(format!("🗳️ Vote Shared: {}", p.question))
+                     .description(format!("**User**: <@{}>\n**Method**: {}\n\n{}", component.user.id, p.voting_method, vote_details))
+                     .color((0, 255, 0)) // Green
+                })
+            }).await?;
+
+            // Update ephemeral message to disable button
+            component.create_interaction_response(&ctx.http, |response| {
+                response.kind(InteractionResponseType::UpdateMessage)
+                    .interaction_response_data(|message| {
+                        message.components(|c| {
+                            c.create_action_row(|row| {
+                                row.create_button(|btn| {
+                                    btn.custom_id(format!("voteChange_{}", p.id))
+                                       .label("Change My Vote")
+                                       .style(ButtonStyle::Secondary)
+                                })
+                                .create_button(|btn| {
+                                    btn.custom_id("shared")
+                                       .label("Vote Shared!")
+                                       .style(ButtonStyle::Success)
+                                       .disabled(true)
+                                })
+                            })
+                        })
+                    })
+            }).await?;
+        }
     } else {
         warn!("Unhandled component custom_id: {}", custom_id);
         component.create_interaction_response(&ctx.http, |response| {
